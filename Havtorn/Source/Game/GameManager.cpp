@@ -4,6 +4,8 @@
 #include "GameScene.h"
 #include "GameScript.h"
 
+#include "Ghosty/GhostySystem.h"
+
 #include <CommandLine.h>
 #include <Engine.h>
 #include <GUI.h>
@@ -85,6 +87,7 @@ namespace Havtorn
 		World->RequestSystem<CInputSystem>(this);
 		World->RequestSystem<CSpriteAnimatorGraphSystem>(this);
 		World->RequestSystem<CAbilitySystem>(this);
+		World->RequestSystem<CGhostySystem>(this);
 		World->RequestPhysicsSystem(this);
 		World->UnblockPhysicsSystem(this);
 		World->RequestAudioSystem(this);
