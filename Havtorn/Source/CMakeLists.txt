@@ -21,7 +21,7 @@ endif()
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -35,6 +35,7 @@ set(SHADER_FOLDER "Engine/Graphics/Shaders/")
 set(SHADER_INCL_FOLDER "Engine/Graphics/Shaders/Includes/")
 set(EDITOR_FOLDER "Editor/")
 set(GAME_FOLDER "Game/")
+set(GAME_EDITOR_FOLDER "GameEditor/")
 set(GUI_FOLDER "GUI/")
 set(CORE_FOLDER "Core/")
 set(PLATFORM_FOLDER "Platform/")
@@ -265,6 +266,9 @@ set(IMGUI_FILES
    ${IMGUI_FOLDER}backends/imgui_impl_sdl3.h
    ${IMGUI_FOLDER}backends/imgui_impl_win32.cpp
    ${IMGUI_FOLDER}backends/imgui_impl_win32.h
+   ${IMGUI_FOLDER}backends/ImGuiNotify.h
+   ${IMGUI_FOLDER}backends/IconsFontAwesome6.h
+   ${IMGUI_FOLDER}backends/fa-solid-900.h
    ${IMGUI_FOLDER}misc/debuggers/imgui.natvis
    ${IMGUI_FOLDER}misc/debuggers/imgui.natstepfilter
    ${IMGUI_FOLDER}misc/cpp/imgui_stdlib.cpp
@@ -319,6 +323,7 @@ target_include_directories(GUI PRIVATE
     "${EXTERNAL_FOLDER}ImGuizmo"
     "${EXTERNAL_FOLDER}imgui-node-editor"
     "${EXTERNAL_FOLDER}DirectXTex"
+    "${EXTERNAL_FOLDER}rapidjson/include"
     "${EXTERNAL_FOLDER}SDL/include"
 )
 target_link_directories(GUI PRIVATE
@@ -385,66 +390,8 @@ set(ENGINE_FILES
 	${ENGINE_FOLDER}Assets/SourceAssetData.cpp
 	${ENGINE_FOLDER}Assets/SourceAssetData.h
 	${ENGINE_FOLDER}Assets/SourceAssetDataInclude.h
-	${ENGINE_FOLDER}ECS/Systems/UISystem.cpp
-	${ENGINE_FOLDER}ECS/Systems/UISystem.h
-	${ENGINE_FOLDER}ECS/ComponentEditorContexts/UICanvasComponentEditorContext.cpp
-	${ENGINE_FOLDER}ECS/ComponentEditorContexts/UICanvasComponentEditorContext.h
 	${ENGINE_FOLDER}ECS/Components/UICanvasComponent.cpp
 	${ENGINE_FOLDER}ECS/Components/UICanvasComponent.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/AbilityComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/AbilityComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/AudioEmitterComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/AudioEmitterComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/AudioListenerComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/AudioListenerComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/CameraComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/CameraComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/CameraControllerComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/CameraControllerComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/DecalComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/DecalComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/DirectionalLightComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/DirectionalLightComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/EnvironmentLightComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/EnvironmentLightComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/InputComponentEditorContext.cpp
-	${ENGINE_FOLDER}ECS/ComponentEditorContexts/InputComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/LevelStreamingComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/LevelStreamingComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/MaterialComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/MaterialComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Physics2DComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Physics2DComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Physics3DComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Physics3DComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Physics3DControllerComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Physics3DControllerComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/PointLightComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/PointLightComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/PrefabComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/PrefabComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/ScriptComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/ScriptComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SequencerComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SequencerComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SkeletalAnimationComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SkeletalAnimationComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SkeletalMeshComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SkeletalMeshComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SpotLightComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SpotLightComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SpriteAnimatorGraphComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SpriteAnimatorGraphComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SpriteComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/SpriteComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/StaticMeshComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/StaticMeshComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Transform2DComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/Transform2DComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/TransformComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/TransformComponentEditorContext.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/VolumetricLightComponentEditorContext.cpp
-    ${ENGINE_FOLDER}ECS/ComponentEditorContexts/VolumetricLightComponentEditorContext.h
     ${ENGINE_FOLDER}ECS/Components/AbilityComponent.cpp
     ${ENGINE_FOLDER}ECS/Components/AbilityComponent.h
     ${ENGINE_FOLDER}ECS/Components/AudioEmitterComponent.cpp
@@ -511,10 +458,11 @@ set(ENGINE_FILES
     ${ENGINE_FOLDER}ECS/Systems/SequencerSystem.h
     ${ENGINE_FOLDER}ECS/Systems/SpriteAnimatorGraphSystem.cpp
     ${ENGINE_FOLDER}ECS/Systems/SpriteAnimatorGraphSystem.h
+	${ENGINE_FOLDER}ECS/Systems/UISystem.cpp
+	${ENGINE_FOLDER}ECS/Systems/UISystem.h
     "${ENGINE_FOLDER}ECS/Component.cpp"
     "${ENGINE_FOLDER}ECS/Component.h"
     ${ENGINE_FOLDER}ECS/ComponentAlgo.h
-    ${ENGINE_FOLDER}ECS/ComponentEditorContext.h
     ${ENGINE_FOLDER}ECS/ECSInclude.h
     ${ENGINE_FOLDER}ECS/Entity.cpp
     ${ENGINE_FOLDER}ECS/Entity.h
@@ -552,11 +500,9 @@ set(ENGINE_FILES
     ${ENGINE_FOLDER}Graphics/RenderTextureFactory.h
     ${ENGINE_FOLDER}Graphics/TextureBank.cpp
     ${ENGINE_FOLDER}Graphics/TextureBank.h
-    ${ENGINE_FOLDER}Hex/SHexCommandComponentEditorContext.cpp
-	${ENGINE_FOLDER}Hex/SHexCommandComponentEditorContext.h
-    ${ENGINE_FOLDER}Hex/SHexCommandComponent.cpp
-	${ENGINE_FOLDER}Hex/SHexCommandComponent.h
-	${ENGINE_FOLDER}Hex/SHexCommand.h
+    ${ENGINE_FOLDER}Hex/HexCommandComponent.cpp
+	${ENGINE_FOLDER}Hex/HexCommandComponent.h
+	${ENGINE_FOLDER}Hex/HexCommand.h
     ${ENGINE_FOLDER}HexAudio/HexAudio.cpp
     ${ENGINE_FOLDER}HexAudio/HexAudio.h
     ${ENGINE_FOLDER}HexPhys/HexPhys.cpp
@@ -565,13 +511,8 @@ set(ENGINE_FILES
     ${ENGINE_FOLDER}HexRune/CoreNodes/CoreNodes.h
     ${ENGINE_FOLDER}HexRune/ECSNodes/ECSNodes.cpp
     ${ENGINE_FOLDER}HexRune/ECSNodes/ECSNodes.h
-    ${ENGINE_FOLDER}HexRune/NodeEditorContexts/CoreNodeEditorContexts.cpp
-    ${ENGINE_FOLDER}HexRune/NodeEditorContexts/CoreNodeEditorContexts.h
-    ${ENGINE_FOLDER}HexRune/NodeEditorContexts/ECSNodeEditorContexts.cpp
-    ${ENGINE_FOLDER}HexRune/NodeEditorContexts/ECSNodeEditorContexts.h
     ${ENGINE_FOLDER}HexRune/HexRune.cpp
     ${ENGINE_FOLDER}HexRune/HexRune.h
-    ${ENGINE_FOLDER}HexRune/NodeEditorContext.h
     ${ENGINE_FOLDER}HexRune/Pin.cpp
     ${ENGINE_FOLDER}HexRune/Pin.h
     "${ENGINE_FOLDER}Input/Input.cpp"
@@ -627,6 +568,7 @@ set(VERTEX_SHADERS
     ${SHADER_FOLDER}DeferredInstancedMeshEditor_VS.hlsl
     ${SHADER_FOLDER}DeferredStaticMesh_VS.hlsl
     ${SHADER_FOLDER}DeferredVertexPaint_VS.hlsl
+    ${SHADER_FOLDER}DeferredVertexPaintEditor_VS.hlsl
     ${SHADER_FOLDER}EditorPreview_VS.hlsl
     ${SHADER_FOLDER}EditorPreviewSkeletal_VS.hlsl
     ${SHADER_FOLDER}FullscreenVertexShader_VS.hlsl
@@ -663,6 +605,7 @@ set(PIXEL_SHADERS
     ${SHADER_FOLDER}DeferredRenderPassNormal_PS.hlsl
     ${SHADER_FOLDER}DeferredRenderPassRoughness_PS.hlsl
     ${SHADER_FOLDER}DeferredVertexPaint_PS.hlsl
+    ${SHADER_FOLDER}DeferredVertexPaintEditor_PS.hlsl
     ${SHADER_FOLDER}EditorPreview_PS.hlsl
     ${SHADER_FOLDER}FullscreenBilateralBlurHorizontal_PS.hlsl
     ${SHADER_FOLDER}FullscreenBilateralBlurVertical_PS.hlsl
@@ -824,79 +767,6 @@ add_dependencies(Engine Core Platform GUI)
 # ==================== ENGINE ====================
 
 
-# ==================== GAME ====================
-set(GAME_FILES
-	${GAME_FOLDER}HexRune/NodeEditorContext/SetPositionNodeEditorContext.cpp
-	${GAME_FOLDER}HexRune/NodeEditorContext/SetPositionNodeEditorContext.h
-	${GAME_FOLDER}HexRune/SetPositionNode.cpp
-	${GAME_FOLDER}HexRune/SetPositionNode.h
-	${GAME_FOLDER}NodeInclude.h
-	${GAME_FOLDER}HexRune/NodeEditorContext/TimerNodeEditorContext.cpp
-	${GAME_FOLDER}HexRune/NodeEditorContext/TimerNodeEditorContext.h
-	${GAME_FOLDER}HexRune/TimerNode.cpp
-	${GAME_FOLDER}HexRune/TimerNode.h
-	${GAME_FOLDER}HexRune/NodeEditorContext/InterpolatePositionNodeEditorContext.cpp
-	${GAME_FOLDER}HexRune/NodeEditorContext/InterpolatePositionNodeEditorContext.h
-	${GAME_FOLDER}HexRune/InterpolatePosition.cpp
-	${GAME_FOLDER}HexRune/InterpolatePosition.h
-	${GAME_FOLDER}Ghosty/SGhostyNodeEditorContext.h
-	${GAME_FOLDER}Ghosty/SGhostyNodeEditorContext.cpp
-	${GAME_FOLDER}GhostyNode.h
-	${GAME_FOLDER}GhostyNode.cpp
-    ${GAME_FOLDER}Ghosty/GhostyComponent.h
-    ${GAME_FOLDER}Ghosty/GhostyComponentEditorContext.cpp
-    ${GAME_FOLDER}Ghosty/GhostyComponentEditorContext.h
-    ${GAME_FOLDER}Ghosty/GhostySystem.cpp
-    ${GAME_FOLDER}Ghosty/GhostySystem.h
-    ${GAME_FOLDER}GameDeepLinkParser.cpp
-    ${GAME_FOLDER}GameDeepLinkParser.h
-    ${GAME_FOLDER}GameManager.cpp
-    ${GAME_FOLDER}GameManager.h
-    ${GAME_FOLDER}GameProcess.cpp
-    ${GAME_FOLDER}GameProcess.h
-    ${GAME_FOLDER}GameScene.cpp
-    ${GAME_FOLDER}GameScene.h
-    ${GAME_FOLDER}GameScript.cpp
-    ${GAME_FOLDER}GameScript.h
-    ${GAME_FOLDER}hvpch.cpp
-    ${GAME_FOLDER}hvpch.h
-)
-add_library(Game SHARED ${GAME_FILES})
-source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${GAME_FILES})
-target_include_directories(Game PRIVATE
-    "${GAME_FOLDER}"
-    "${EXTERNAL_FOLDER}"
-    "${EXTERNAL_FOLDER}FastNoise2/include"
-    "${EXTERNAL_FOLDER}rapidjson/include"
-    "${EXTERNAL_FOLDER}DirectXTex"
-    "${EXTERNAL_FOLDER}box2d/include/box2d"
-    "${EXTERNAL_FOLDER}box2dcpp/include/box2cpp"
-    "${EXTERNAL_FOLDER}PhysX/physx/include"
-    "Core"
-    "Platform"
-    "GUI"
-    "Engine"
-)
-target_link_libraries(Game PRIVATE
-    Core
-    Platform
-    GUI
-    Engine
-)
-target_link_directories(Game PRIVATE
-    ${CMAKE_BINARY_DIR}
-)
-target_compile_definitions(Game PRIVATE ${COMMON_COMPILE_DEFINITIONS} HV_GAME_DLL)
-target_compile_options(Game PRIVATE ${COMMON_COMPILE_OPTIONS})
-target_compile_options(Game PRIVATE "/FI${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/Game.dir/$<CONFIG>/cmake_pch.hxx")
-target_precompile_headers(Game PRIVATE ${GAME_FOLDER}hvpch.h)
-target_link_options(Game PRIVATE ${COMMON_LINK_OPTIONS})
-set_property(TARGET Game PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${WORKING_FOLDER})
-set_target_properties(Game PROPERTIES ${COMMON_TARGET_PROPERTIES})
-add_dependencies(Game Core Platform GUI Engine)
-# ==================== GAME ====================
-
-
 # ==================== EDITOR ====================
 set(EDITOR_FILES
 	${EDITOR_FOLDER}AuthoringTools/InputTool.cpp
@@ -915,6 +785,71 @@ set(EDITOR_FILES
     ${EDITOR_FOLDER}EditActions/MoveTransformEditAction.h
     ${EDITOR_FOLDER}EditActions/RemoveEntityEditAction.cpp
     ${EDITOR_FOLDER}EditActions/RemoveEntityEditAction.h
+    ${EDITOR_FOLDER}ComponentView.h
+    ${EDITOR_FOLDER}ComponentViewInclude.h
+    ${EDITOR_FOLDER}ComponentViews/AbilityComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/AbilityComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/AudioEmitterComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/AudioEmitterComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/AudioListenerComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/AudioListenerComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/CameraComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/CameraComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/CameraControllerComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/CameraControllerComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/DecalComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/DecalComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/DirectionalLightComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/DirectionalLightComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/EnvironmentLightComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/EnvironmentLightComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/InputComponentView.cpp
+	${EDITOR_FOLDER}ComponentViews/InputComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/HexCommandComponentView.cpp
+	${EDITOR_FOLDER}ComponentViews/HexCommandComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/LevelStreamingComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/LevelStreamingComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/MaterialComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/MaterialComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/Physics2DComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/Physics2DComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/Physics3DComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/Physics3DComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/Physics3DControllerComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/Physics3DControllerComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/PointLightComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/PointLightComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/PrefabComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/PrefabComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/ScriptComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/ScriptComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/SequencerComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/SequencerComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/SkeletalAnimationComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/SkeletalAnimationComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/SkeletalMeshComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/SkeletalMeshComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/SpotLightComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/SpotLightComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/SpriteAnimatorGraphComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/SpriteAnimatorGraphComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/SpriteComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/SpriteComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/StaticMeshComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/StaticMeshComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/Transform2DComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/Transform2DComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/TransformComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/TransformComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/UICanvasComponentView.cpp
+	${EDITOR_FOLDER}ComponentViews/UICanvasComponentView.h
+    ${EDITOR_FOLDER}ComponentViews/VolumetricLightComponentView.cpp
+    ${EDITOR_FOLDER}ComponentViews/VolumetricLightComponentView.h
+    ${EDITOR_FOLDER}NodeViews/CoreNodeViews.cpp
+    ${EDITOR_FOLDER}NodeViews/CoreNodeViews.h
+    ${EDITOR_FOLDER}NodeViews/ECSNodeViews.cpp
+    ${EDITOR_FOLDER}NodeViews/ECSNodeViews.h
+    ${EDITOR_FOLDER}NodeView.h
     ${EDITOR_FOLDER}Systems/EditorRenderSystem.cpp
     ${EDITOR_FOLDER}Systems/EditorRenderSystem.h
     ${EDITOR_FOLDER}Systems/PickingSystem.cpp
@@ -1008,6 +943,133 @@ add_dependencies(Editor Core Platform GUI Engine Game)
 # ==================== EDITOR ====================
 
 
+# ==================== GAME ====================
+set(GAME_FILES
+	${GAME_FOLDER}HexRune/SetPositionNode.cpp
+	${GAME_FOLDER}HexRune/SetPositionNode.h
+	${GAME_FOLDER}NodeInclude.h
+	${GAME_FOLDER}HexRune/TimerNode.cpp
+	${GAME_FOLDER}HexRune/TimerNode.h
+	${GAME_FOLDER}HexRune/InterpolatePosition.cpp
+	${GAME_FOLDER}HexRune/InterpolatePosition.h
+	${GAME_FOLDER}GhostyNode.h
+	${GAME_FOLDER}GhostyNode.cpp
+    ${GAME_FOLDER}Ghosty/GhostyComponent.h
+    ${GAME_FOLDER}Ghosty/GhostySystem.cpp
+    ${GAME_FOLDER}Ghosty/GhostySystem.h
+    ${GAME_FOLDER}GameDeepLinkParser.cpp
+    ${GAME_FOLDER}GameDeepLinkParser.h
+    ${GAME_FOLDER}GameManager.cpp
+    ${GAME_FOLDER}GameManager.h
+    ${GAME_FOLDER}GameProcess.cpp
+    ${GAME_FOLDER}GameProcess.h
+    ${GAME_FOLDER}GameScene.cpp
+    ${GAME_FOLDER}GameScene.h
+    ${GAME_FOLDER}GameScript.cpp
+    ${GAME_FOLDER}GameScript.h
+    ${GAME_FOLDER}hvpch.cpp
+    ${GAME_FOLDER}hvpch.h
+)
+add_library(Game SHARED ${GAME_FILES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${GAME_FILES})
+target_include_directories(Game PRIVATE
+    "${GAME_FOLDER}"
+    "${EXTERNAL_FOLDER}"
+    "${EXTERNAL_FOLDER}FastNoise2/include"
+    "${EXTERNAL_FOLDER}rapidjson/include"
+    "${EXTERNAL_FOLDER}DirectXTex"
+    "${EXTERNAL_FOLDER}box2d/include/box2d"
+    "${EXTERNAL_FOLDER}box2dcpp/include/box2cpp"
+    "${EXTERNAL_FOLDER}PhysX/physx/include"
+    "Core"
+    "Platform"
+    "GUI"
+    "Engine"
+)
+target_link_libraries(Game PRIVATE
+    Core
+    Platform
+    GUI
+    Engine
+)
+target_link_directories(Game PRIVATE
+    ${CMAKE_BINARY_DIR}
+)
+target_compile_definitions(Game PRIVATE ${COMMON_COMPILE_DEFINITIONS} HV_GAME_DLL)
+target_compile_options(Game PRIVATE ${COMMON_COMPILE_OPTIONS})
+target_compile_options(Game PRIVATE "/FI${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/Game.dir/$<CONFIG>/cmake_pch.hxx")
+target_precompile_headers(Game PRIVATE ${GAME_FOLDER}hvpch.h)
+target_link_options(Game PRIVATE ${COMMON_LINK_OPTIONS})
+set_property(TARGET Game PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${WORKING_FOLDER})
+set_target_properties(Game PROPERTIES ${COMMON_TARGET_PROPERTIES})
+add_dependencies(Game Core Platform GUI Engine)
+# ==================== GAME ====================
+
+
+# ==================== GAME_EDITOR ====================
+set(GAME_EDITOR_FILES
+    ${GAME_EDITOR_FOLDER}Ghosty/SGhostyNodeView.h
+    ${GAME_EDITOR_FOLDER}Ghosty/SGhostyNodeView.cpp
+    ${GAME_EDITOR_FOLDER}Ghosty/GhostyComponentView.cpp
+    ${GAME_EDITOR_FOLDER}Ghosty/GhostyComponentView.h
+    ${GAME_EDITOR_FOLDER}HexRune/SetPositionNodeView.cpp
+    ${GAME_EDITOR_FOLDER}HexRune/SetPositionNodeView.h
+    ${GAME_EDITOR_FOLDER}HexRune/TimerNodeView.cpp
+    ${GAME_EDITOR_FOLDER}HexRune/TimerNodeView.h
+    ${GAME_EDITOR_FOLDER}HexRune/InterpolatePositionNodeView.cpp
+    ${GAME_EDITOR_FOLDER}HexRune/InterpolatePositionNodeView.h
+    ${GAME_EDITOR_FOLDER}GameEditorManager.cpp
+    ${GAME_EDITOR_FOLDER}GameEditorManager.h
+    ${GAME_EDITOR_FOLDER}hvpch.cpp
+    ${GAME_EDITOR_FOLDER}hvpch.h
+)
+add_library(GameEditor SHARED ${GAME_EDITOR_FILES})
+source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${GAME_EDITOR_FILES})
+target_include_directories(GameEditor PRIVATE
+    "${GAME_EDITOR_FOLDER}"
+    "${EXTERNAL_FOLDER}rapidjson/include"
+    "${EXTERNAL_FOLDER}DirectXTex"
+    "${EXTERNAL_FOLDER}box2d/include/box2d"
+    "${EXTERNAL_FOLDER}box2dcpp/include/box2cpp"
+    "${EXTERNAL_FOLDER}PhysX/physx/include"
+    "Core"
+    "Platform"
+    "GUI"
+    "Engine"
+    "Editor"
+    "Game"
+)
+target_link_libraries(GameEditor PRIVATE
+    Core
+    Platform
+    GUI
+    Engine
+    Editor
+    Game
+)
+target_link_directories(GameEditor PRIVATE
+    ${CMAKE_BINARY_DIR}
+)
+
+if(AUDIO_BACKEND STREQUAL "WWISE")
+    target_compile_definitions(GameEditor PRIVATE HV_AUDIO_BACKEND_WWISE)
+    target_compile_definitions(GameEditor PRIVATE $<$<CONFIG:GameRelease>:AK_OPTIMIZED>)
+elseif(AUDIO_BACKEND STREQUAL "FMOD")
+    target_compile_definitions(GameEditor PRIVATE HV_AUDIO_BACKEND_FMOD)
+elseif(AUDIO_BACKEND STREQUAL "SDL")
+    target_compile_definitions(GameEditor PRIVATE HV_AUDIO_BACKEND_SDL)
+endif()
+
+target_compile_definitions(GameEditor PRIVATE ${COMMON_COMPILE_DEFINITIONS} HV_GAME_EDITOR_DLL)
+target_compile_options(GameEditor PRIVATE ${COMMON_COMPILE_OPTIONS})
+target_precompile_headers(GameEditor PRIVATE ${GAME_EDITOR_FOLDER}hvpch.h)
+target_link_options(GameEditor PRIVATE ${COMMON_LINK_OPTIONS})
+set_property(TARGET GameEditor PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${WORKING_FOLDER})
+set_target_properties(GameEditor PROPERTIES ${COMMON_TARGET_PROPERTIES})
+add_dependencies(GameEditor Core Platform GUI Engine Editor Game)
+# ==================== GAME_EDITOR ====================
+
+
 # ==================== LAUNCHER ====================
 set(LAUNCHER_FILES
     ${LAUNCHER_FOLDER}Application/Application.cpp
@@ -1028,17 +1090,18 @@ target_include_directories(Launcher PRIVATE
     "Platform"
 	"GUI"
 	"Engine"
-	"Game"
 	"Editor"
-
+	"Game"
+    "GameEditor"
 )
 target_link_libraries(Launcher PRIVATE
     Core    
     Platform
     GUI
     Engine
-    Game
     Editor
+    Game
+    GameEditor
     $<$<CONFIG:EditorDebug>:Debug/SDL3>
     $<$<CONFIG:GameDebug>:Debug/SDL3>
     $<$<CONFIG:EditorDevelopment>:Release/SDL3>
@@ -1054,5 +1117,5 @@ target_link_options(Launcher PRIVATE ${COMMON_LINK_OPTIONS})
 set_property(TARGET Launcher PROPERTY VS_DEBUGGER_WORKING_DIRECTORY ${WORKING_FOLDER})
 set_property(DIRECTORY PROPERTY VS_STARTUP_PROJECT Launcher)
 set_target_properties(Launcher PROPERTIES ${COMMON_TARGET_PROPERTIES} RUNTIME_OUTPUT_NAME $<CONFIG>)
-add_dependencies(Launcher Core Platform GUI Engine Game Editor)
+add_dependencies(Launcher Core Platform GUI Engine Editor Game GameEditor)
 # ==================== LAUNCHER ====================

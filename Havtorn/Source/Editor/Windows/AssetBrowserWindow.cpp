@@ -312,6 +312,86 @@ namespace Havtorn
 		CurrentDirectory = path;
 	}
 
+	SRenderAssetCardResult CAssetBrowserWindow::RenderAssetCard(SEditorAssetRepresentation* assetRep, const SColor& borderColor)
+	{
+		SRenderAssetCardResult result;
+
+		SVector2<F32> cardStartPos = GUI::GetCursorPos();
+		SVector2<F32> framePadding = GUI::GetStyleVar(EStyleVar::FramePadding);
+
+		SVector2<F32> cardSize = { GUI::ThumbnailSizeX + framePadding.X * 0.5f, GUI::ThumbnailSizeY + framePadding.Y * 0.5f };
+		cardSize.Y *= 1.6f;
+		SVector2<F32> thumbnailSize = { GUI::ThumbnailSizeX + framePadding.X * 0.5f, GUI::ThumbnailSizeY + framePadding.Y * 0.5f + 4.0f };
+
+		// TODO.NW: Can't seem to get the leftmost line to show correctly. Maybe need to start the table as usual and then offset inwards?
+		constexpr F32 borderThickness = 1.0f;
+		GUI::SetCursorPos(cardStartPos + SVector2<F32>(-1.0f * borderThickness));
+		GUI::AddRectFilled(GUI::GetCursorScreenPos(), cardSize + SVector2<F32>(2.0f * borderThickness), borderColor);
+		GUI::SetCursorPos(cardStartPos);
+		GUI::AddRectFilled(GUI::GetCursorScreenPos(), cardSize, SColor(65));
+		GUI::SetCursorPos(cardStartPos);
+		GUI::AddRectFilled(GUI::GetCursorScreenPos(), thumbnailSize, SColor(40));
+		GUI::SetCursorPos(cardStartPos);
+
+		if (GUI::Selectable("", false, { ESelectableFlag::AllowDoubleClick, ESelectableFlag::AllowOverlap }, cardSize))
+		{
+			if (GUI::IsMouseReleased())
+				result.IsClicked = true;
+			if (GUI::IsDoubleClick())
+				result.IsDoubleClicked = true;
+		}
+
+		const char* label = assetRep->Name.c_str();
+		CEditorManager::AssetDragData.TrySet(*assetRep, label, {});
+		
+		GUI::SetCursorPos(cardStartPos + SVector2<F32>(1.0f, 0.0f));
+		GUI::Image(Manager->GetTextureResourceFromAssetRep(assetRep), { GUI::ThumbnailSizeX, GUI::ThumbnailSizeY }, SVector2<F32>(0.0f), SVector2<F32>(1.0f), SColor::White);
+
+		SColor detailColor = GetAssetTypeColor(assetRep->AssetType);
+		detailColor.A = SColor::ToU8Range(0.5f);
+		GUI::AddRectFilled(GUI::GetCursorScreenPos(), SVector2<F32>(cardSize.X, 2.0f), detailColor);
+
+		GUI::OffsetCursorPos(SVector2<F32>(2.0f, 4.0f));
+
+		if (GUI::IsItemHovered())
+		{
+			result.IsHovered = true;
+		}
+
+		GUI::PushClipRect(GUI::GetCursorScreenPos(), cardSize - framePadding);
+
+		if (assetRep->IsBeingNamed)
+		{
+			GUI::SetKeyboardFocusHere();
+
+			std::string newAssetName = label;
+			GUI::PushID(label);
+			if (GUI::InputText("", newAssetName))
+			{
+				if (GUI::IsItemDeactivatedAfterEdit())
+					result.NewAssetName = newAssetName;
+			}
+
+			if (GUI::IsItemDeactivated() && !result.NewAssetName.has_value())
+				result.NewAssetName = label;
+
+			GUI::PopID();
+		}
+		else
+			GUI::Text(label);
+
+		if (GUI::IsItemHovered())
+			GUI::SetTooltip(label);
+
+		GUI::OffsetCursorPos(SVector2<F32>(2.0f, -2.0f));
+		GUI::SetSecondaryFontActive(true);
+		GUI::TextDisabled(GetAssetTypeDetailName(assetRep->AssetType).c_str());
+		GUI::SetSecondaryFontActive(false);
+		GUI::PopClipRect();
+
+		return result;
+	}
+
 	void CAssetBrowserWindow::OnDragDropFiles(const std::vector<std::string> filePaths)
 	{
 		FilePathsToImport = filePaths;
@@ -449,16 +529,10 @@ namespace Havtorn
 	{
 		GUI::TextDisabled("Packing: AlbedoMaterialNormal_Packed");
 
-		F32 thumbnailPadding = 4.0f;
-		F32 cellWidth = GUI::TexturePreviewSizeX * 0.75f + thumbnailPadding;
-		F32 panelWidth = 256.0f;
-		I32 columnCount = static_cast<I32>(panelWidth / cellWidth);
-
 		bool canCreateMaterial = true;
 		const std::array<std::string, 3> labels = { "Albedo", "Material", "Normal" };
 		for (U64 i = 0; i < 3; i++)
 		{
-			intptr_t assetPickerThumbnail = Manager->GetTextureResourceFromAssetRep(NewMaterialTextures[i]);
 			std::string pickerLabel = labels[i].c_str();
 			if (NewMaterialTextures[i] != nullptr)
 			{
@@ -466,7 +540,7 @@ namespace Havtorn
 				pickerLabel.append(NewMaterialTextures[i]->Name);
 			}
 			GUI::PushID(labels[i].c_str());
-			SAssetPickResult result = GUI::AssetPickerDropdownFilter(pickerLabel.c_str(), GetAssetTypeDetailName(EAssetType::Texture).c_str(), assetPickerThumbnail, Manager->GetResourceManager()->GetStaticEditorTextureResource(EEditorTexture::GetFromSource), Manager->GetResourceManager()->GetStaticEditorTextureResource(EEditorTexture::FindIcon), "Assets", columnCount, Manager->GetAssetFilteredInspectFunction(), EAssetType::Texture);
+			SAssetPickResult result = Manager->AssetPickerDropdown(pickerLabel.c_str(), EAssetType::Texture, NewMaterialTextures[i]);
 			GUI::PopID();
 
 			if (result.State == EAssetPickerState::AssetPicked)
@@ -686,15 +760,8 @@ namespace Havtorn
 			ImportOptions.SourceData = SSourceAssetData{ .AssetType = EAssetType::SkeletalAnimation, .Version = 1, .SourcePath = sourceFilePath, .Variant = SSkeletalAnimationSourceData{} };
 
 		SSkeletalAnimationSourceData& sourceData = std::get<SSkeletalAnimationSourceData>(ImportOptions.SourceData.Variant);
-
-		constexpr F32 thumbnailPadding = 4.0f;
-		const F32 cellWidth = GUI::TexturePreviewSizeX * 0.75f + thumbnailPadding;
-		constexpr F32 panelWidth = 256.0f;
-		const I32 columnCount = static_cast<I32>(panelWidth / cellWidth);
-
-		intptr_t assetPickerThumbnail = Manager->GetTextureResourceFromAssetRep(ImportOptions.AssetRep);
 		
-		SAssetPickResult result = GUI::AssetPickerFilter("Skeletal Rig", "Skeletal Mesh", assetPickerThumbnail, "Assets/Meshes", columnCount, Manager->GetAssetFilteredInspectFunction(), EAssetType::SkeletalMesh);
+		SAssetPickResult result = Manager->AssetPickerDropdown("Skeletal Rig", EAssetType::SkeletalMesh, ImportOptions.AssetRep);
 
 		if (result.State == EAssetPickerState::AssetPicked)
 		{
@@ -739,33 +806,28 @@ namespace Havtorn
 			const bool isOpen = GUI::TreeNodeEx(filenameString.c_str(), { ETreeNodeFlag::OpenOnDoubleClick });
 
 			// Asset Drag
-			if (GUI::BeginDragDropTarget())
+			auto result = CEditorManager::AssetDragData.TryDeliver({ EDragDropFlag::AcceptBeforeDelivery, EDragDropFlag::AcceptNopreviewTooltip });
+			if (result.Payload != nullptr)
 			{
-				SGuiPayload payload = GUI::AcceptDragDropPayload("AssetDrag", { EDragDropFlag::AcceptBeforeDelivery, EDragDropFlag::AcceptNopreviewTooltip });
-				if (payload.Data != nullptr)
+				// NW: Respond to target, check type
+				SEditorAssetRepresentation* payloadAssetRep = result.Payload;
+				GUI::SetTooltip("Move '%s' to '%s'?", payloadAssetRep->Name.c_str(), entry.path().string().c_str());
+
+				if (result.Result == EDragDeliverResult::Delivered)
 				{
-					// NW: Respond to target, check type
-					SEditorAssetRepresentation* payloadAssetRep = reinterpret_cast<SEditorAssetRepresentation*>(payload.Data);
-					GUI::SetTooltip("Move '%s' to '%s'?", payloadAssetRep->Name.c_str(), entry.path().string().c_str());
+					// TODO.NW: Should we move to the destination directory when moving things? Maybe auto-select the new asset rep?
+					SetCurrentPath(entry.path());
 
-					if (payload.IsDelivery)
-					{
-						// TODO.NW: Should we move to the destination directory when moving things? Maybe auto-select the new asset rep?
-						SetCurrentPath(entry.path());
+					std::string oldPath = payloadAssetRep->DirectoryEntry.path().string().c_str();
+					std::string newPath = (entry.path() / payloadAssetRep->DirectoryEntry.path().filename()).string().c_str();
 
-						std::string oldPath = payloadAssetRep->DirectoryEntry.path().string().c_str();
-						std::string newPath = (entry.path() / payloadAssetRep->DirectoryEntry.path().filename()).string().c_str();
+					CJsonDocument config = UFileSystem::OpenJson(UFileSystem::EngineConfig);
+					config.WriteValueToArray("Asset Redirectors", oldPath, newPath);
 
-						CJsonDocument config = UFileSystem::OpenJson(UFileSystem::EngineConfig);
-						config.WriteValueToArray("Asset Redirectors", oldPath, newPath);
-
-						Manager->RemoveAssetRep(payloadAssetRep->DirectoryEntry);
-						std::filesystem::rename(oldPath, newPath);
-						Manager->CreateAssetRep(newPath);
-					}
+					Manager->RemoveAssetRep(payloadAssetRep->DirectoryEntry);
+					std::filesystem::rename(oldPath, newPath);
+					Manager->CreateAssetRep(newPath);
 				}
-
-				GUI::EndDragDropTarget();
 			}
 
 			if (GUI::IsItemClicked())
@@ -902,7 +964,7 @@ namespace Havtorn
 			if (rep->IsSourceWatched)
 				borderColor = SColor::Magenta;
 			
-			SRenderAssetCardResult result = GUI::RenderAssetCard(rep->Name.c_str(), false, rep->IsBeingNamed, Manager->GetTextureResourceFromAssetRep(rep.get()), GetAssetTypeDetailName(rep->AssetType).c_str(), GetAssetTypeColor(rep->AssetType), borderColor, rep.get(), sizeof(SEditorAssetRepresentation));
+			SRenderAssetCardResult result = RenderAssetCard(rep.get(), borderColor);
 
 			if (result.IsClicked)
 			{

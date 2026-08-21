@@ -71,20 +71,9 @@ namespace Havtorn
 		// Don't want same IDs over a frame when multiple entities are selected
 		for (const SEntity& selectedEntity : selectedEntities)
 		{
-			if (GUI::BeginDragDropSource())
-			{
-				SGuiPayload payload = GUI::GetDragDropPayload();
-				if (payload.Data == nullptr)
-				{
-					GUI::SetDragDropPayload("EntityDrag", &selectedEntity, sizeof(SEntity));
-				}
-				GUI::Text("entityName");
-
-				GUI::EndDragDropSource();
-			}
-
 			// NW: The main inspector logic does not care what gets inspected outside of the world scenes
 			CScene* currentScene = UComponentAlgo::GetContainingScene(selectedEntity, worldScenes);
+
 			InspectEntity(selectedEntity, currentScene);
 		}
 
@@ -119,21 +108,28 @@ namespace Havtorn
 		{
 			GUI::InputText("##MetaDataCompName", &metaDataComp->Name);
 			GUI::SameLine();
-			GUI::TextDisabled("GUID %u", metaDataComp->Owner.GUID);
+			GUI::TextDisabled("GUID %llu", metaDataComp->Owner.GUID);
 			if (GUI::IsItemHovered())
-				GUI::SetTooltip("GUID %u", metaDataComp->Owner.GUID);
+				GUI::SetTooltip("GUID %llu", metaDataComp->Owner.GUID);
+
+			CEditorManager::EntityDragData.TrySet(metaDataComp->Owner, metaDataComp->Name.AsString().c_str(), { EDragDropFlag::SourceAllowNullID });
 		}
 
-		for (SComponentEditorContext* context : owningScene->GetComponentEditorContexts(entity))
+		for (const U64& runtimeHash : owningScene->EntityComponentRuntimeHashes.at(entity.GUID))
 		{
+			const std::map<U64, Ptr<SComponentView>>& componentViewsMap = Manager->GetComponentViewsMap();
+			if (!componentViewsMap.contains(runtimeHash))
+				continue;
+
+			const Ptr<SComponentView>& componentView = componentViewsMap.at(runtimeHash);
 			GUI::Separator();
 
-			GUI::PushID(context->GetComponentName());
+			GUI::PushID(componentView->GetComponentName());
 			if (GUI::Button("X"))
 			{
 				if (owningScene != nullptr && entity.IsValid())
 				{
-					context->RemoveComponent(entity, owningScene);
+					owningScene->ComponentSerializers.at(owningScene->TypeHashToTypeID.at(runtimeHash)).ComponentRemover(entity, owningScene);
 					GUI::PopID();
 					continue;
 				}
@@ -142,53 +138,29 @@ namespace Havtorn
 
 			GUI::SameLine();
 
-			if (!GUI::TryOpenComponentView(context->GetComponentName()))
+			if (!GUI::TryOpenComponentView(componentView->GetComponentName()))
 			{
 				GUI::Dummy({ GUI::DummySizeX, GUI::DummySizeY });
 				continue;
 			}
 
-			SComponentViewResult result = context->View(entity, owningScene);
-
-			// TODO.NR: Could make this a enum-function map, but would be good to set up clear rules for how this should work.
-			switch (result.Label)
-			{
-			case EComponentViewResultLabel::UpdateTransformGizmo:
-				UpdateTransformGizmo(result);
-				break;
-			case EComponentViewResultLabel::InspectAssetComponent:
-				InspectAssetComponent(result);
-				break;
-			case EComponentViewResultLabel::OpenAssetTool:
-				OpenAssetTool(result);
-				break;
-			case EComponentViewResultLabel::RenderPreview:
-				RenderPreview(result);
-				break;
-			case EComponentViewResultLabel::PassThrough:
-			default:
-				break;
-			}
+			componentView->View(entity, owningScene);
 
 			GUI::Dummy({ GUI::DummySizeX, GUI::DummySizeY });
 		}
-
 		UpdateAssetContextMenu();
 
 		GUI::Separator();
-		if (GUI::Button("Add Component", SVector2<F32>(GUI::GetContentRegionAvail().X, 0)))
-			GUI::OpenPopup("Add Component Popup");
 
-		OpenAddComponentPopup(entity, owningScene);
+		AddComponentPopup(entity, owningScene);
 	}
 
-	void CInspectorWindow::UpdateTransformGizmo(const SComponentViewResult& result)
+	void CInspectorWindow::UpdateTransformGizmo(STransformComponent* viewedTransformComp)
 	{
 		if (Manager->GetIsFreeCamActive() || Manager->GetRenderManager()->GetRenderPass() == ERenderPass::Game)
 			return;
 
-		STransformComponent* viewedTransformComp = static_cast<STransformComponent*>(result.ComponentViewed);
-		if (viewedTransformComp == nullptr)
+		if (!SComponent::IsValid(viewedTransformComp))
 			return;
 
 		CWorld* world = GEngine::GetWorld();
@@ -197,7 +169,7 @@ namespace Havtorn
 		SMatrix viewMatrix = SMatrix::Identity;
 		SMatrix projectionMatrix = SMatrix::Identity;
 
-		CScene* currentScene = Manager->GetContainingScene(result.ComponentViewed->Owner);
+		CScene* currentScene = Manager->GetContainingScene(viewedTransformComp->Owner);
 		const CPrefabTool* prefabTool = Manager->GetEditorWindow<CPrefabTool>();
 		const bool workingInPrefabScene = prefabTool != nullptr && prefabTool->GetWorkingScene() == currentScene;
 		SCameraData mainCameraData = UComponentAlgo::GetCameraData(mainCamera, world->GetActiveScenes());
@@ -383,11 +355,11 @@ namespace Havtorn
 		GUI::ViewManipulate(outCameraView.data, camDistance, SVector2<F32>(viewManipulateRight - size, viewManipulateTop), SVector2<F32>(size, size), SColor::FromPackedU32(backgroundColor));
 	}
 
-	void CInspectorWindow::InspectAssetComponent(SComponentViewResult& result)
+	void CInspectorWindow::InspectAssetComponent(SComponent* viewedComponent, const EAssetType assetType, std::vector<SAssetReference*> assetReferences)
 	{
 		std::vector<std::string> assetNames = {};
 
-		for (const SAssetReference* ref : result.AssetReferences)
+		for (const SAssetReference* ref : assetReferences)
 			assetNames.push_back(UGeneralUtils::ExtractFileBaseNameFromPath(ref->FilePath));
 
 		for (U8 index = 0; index < static_cast<U8>(assetNames.size()); index++)
@@ -401,14 +373,8 @@ namespace Havtorn
 			id.append(std::to_string(index));
 			GUI::PushID(id.c_str());
 
-			const F32 thumbnailPadding = 4.0f;
-			const F32 cellWidth = GUI::TexturePreviewSizeX * 0.75f + thumbnailPadding;
-			const F32 panelWidth = 256.0f;
-			const I32 columnCount = static_cast<I32>(panelWidth / cellWidth);
-			const std::string modalName = "Select " + GetAssetTypeName(result.AssetType) + " Asset";
-
-			SAssetPickResult assetPickResult = GUI::AssetPickerDropdownFilter(assetName.c_str(), GetAssetTypeDetailName(result.AssetType).c_str(), Manager->GetTextureResourceFromAssetRep(assetRep.get()), Manager->GetResourceManager()->GetStaticEditorTextureResource(EEditorTexture::GetFromSource), Manager->GetResourceManager()->GetStaticEditorTextureResource(EEditorTexture::FindIcon), "Assets", columnCount, Manager->GetAssetFilteredInspectFunction(), result.AssetType);
-			SAssetReference* currentReference = (result.AssetReferences)[AssetPickedIndex];
+			SAssetPickResult assetPickResult = Manager->AssetPickerDropdown(assetName.c_str(), assetType, assetRep.get());
+			SAssetReference* currentReference = (assetReferences)[AssetPickedIndex];
 
 			if (assetPickResult.State == EAssetPickerState::Active)
 				Manager->SetIsModalOpen(true);
@@ -417,7 +383,7 @@ namespace Havtorn
 			else if (assetPickResult.State == EAssetPickerState::ContextMenu)
 			{
 				ContextMenuAssetRef = currentReference;
-				ContextMenuAssetRequester = result.ComponentViewed->Owner.GUID;
+				ContextMenuAssetRequester = viewedComponent->Owner.GUID;
 
 				Manager->SetIsModalOpen(false);
 			}
@@ -431,20 +397,13 @@ namespace Havtorn
 				else if (assetPickResult.State == EAssetPickerState::GetFromSelected)
 				{
 					SEditorAssetRepresentation* selectedAssetInBrowser = Manager->GetSelectedAsset();
-					if (selectedAssetInBrowser != nullptr && (selectedAssetInBrowser->AssetType == assetRep->AssetType || selectedAssetInBrowser->AssetType == result.AssetType))
+					if (selectedAssetInBrowser != nullptr && (selectedAssetInBrowser->AssetType == assetRep->AssetType || selectedAssetInBrowser->AssetType == assetType))
 						pickedAsset = Manager->GetSelectedAsset();
 				}
 
 				if (pickedAsset != nullptr)
 				{
-					std::string newAssetPath = UGeneralUtils::ConvertToPlatformAgnosticPath(pickedAsset->DirectoryEntry.path().string());
-
-					std::vector<std::string> paths = SAssetReference::GetPaths(result.AssetReferences);
-
-					if (paths[AssetPickedIndex] != newAssetPath)
-						GEngine::GetAssetRegistry()->UnrequestAsset(SAssetReference(paths[AssetPickedIndex]), result.ComponentViewed->Owner.GUID);
-
-					*(result.AssetReferences)[AssetPickedIndex] = SAssetReference(newAssetPath);
+					ReassignAssetRef(viewedComponent->Owner.GUID, assetReferences, AssetPickedIndex, pickedAsset->DirectoryEntry.path().string());
 				}
 
 				AssetPickedIndex = 0;
@@ -455,22 +414,43 @@ namespace Havtorn
 				Manager->GetEditorWindow<CAssetBrowserWindow>()->BrowseTo(assetRep.get());
 			}
 			else if (assetPickResult.State == EAssetPickerState::Inactive)
+			{
 				Manager->SetIsModalOpen(false);
+				
+				auto result = CEditorManager::AssetDragData.TryDeliver({ EDragDropFlag::AcceptBeforeDelivery, EDragDropFlag::AcceptNopreviewTooltip });
+				if (result.Payload != nullptr)
+				{
+					SEditorAssetRepresentation* payloadAssetRep = result.Payload;
+					if (payloadAssetRep->AssetType == assetType)
+					{
+						GUI::SetTooltip("Assign %s?", payloadAssetRep->Name.c_str());
+
+						if (result.Result == EDragDeliverResult::Delivered)
+						{
+							ReassignAssetRef(viewedComponent->Owner.GUID, assetReferences, index, payloadAssetRep->DirectoryEntry.path().string());
+						}
+					}
+					else
+					{
+						GUI::SetTooltip("Invalid asset type: '%s'", GetAssetTypeName(payloadAssetRep->AssetType).c_str());
+					}
+				}
+			}
 
 			GUI::PopID();
 		}
 	}
 
-	void CInspectorWindow::OpenAssetTool(const SComponentViewResult& result)
+	void CInspectorWindow::OpenAssetTool(SComponent* viewedComponent)
 	{
-		SSpriteAnimatorGraphComponent* component = static_cast<SSpriteAnimatorGraphComponent*>(result.ComponentViewed);
+		SSpriteAnimatorGraphComponent* component = static_cast<SSpriteAnimatorGraphComponent*>(viewedComponent);
 		if (component == nullptr)
 			return;
 
 		Manager->GetEditorWindow<CSpriteAnimatorGraphNodeWindow>()->Inspect(*component);
 	}
 
-	void CInspectorWindow::RenderPreview(const SComponentViewResult& result)
+	void CInspectorWindow::RenderPreview(const SComponent* viewedComponent)
 	{
 		GUI::TextDisabled("Preview");
 		GUI::Separator();
@@ -478,59 +458,72 @@ namespace Havtorn
 		const SEditorLayout& layout = Manager->GetEditorLayout();
 		// TODO.NW: Centralize layout padding for stuff like this
 		const F32 previewWidth = layout.InspectorSize.X - 16.0f;
-		CRenderTexture* previewRenderTexture = Manager->GetRenderManager()->GetRenderTargetTexture(result.ComponentViewed->Owner.GUID);
+		CRenderTexture* previewRenderTexture = Manager->GetRenderManager()->GetRenderTargetTexture(viewedComponent->Owner.GUID);
 		if (previewRenderTexture != nullptr)
 			GUI::Image((intptr_t)previewRenderTexture->GetShaderResourceView(), SVector2<F32>(previewWidth, previewWidth * (9.0f / 16.0f)));
 		
 		GUI::Separator();
 	}
 
-	void CInspectorWindow::OpenAddComponentPopup(const SEntity& entity, CScene* owningScene)
+	void CInspectorWindow::AddComponentPopup(const SEntity& entity, CScene* owningScene)
 	{
-		if (!GUI::BeginPopup("Add Component Popup"))
-			return;
-
 		if (owningScene == nullptr || !entity.IsValid())
 			return;
 
-		SGuiTextFilter filter = SGuiTextFilter();
-		filter.Draw("Search", 0); // TODO.NW: Figure out a nicer way of setting the width
+		if (GUI::Button("Add Component", SVector2<F32>(GUI::GetContentRegionAvail().X, 0)))
+			GUI::OpenPopup("Add Component Popup");
+
+		if (!GUI::BeginPopup("Add Component Popup"))
+		{
+			ComponentFilter = SGuiTextFilter();
+			return;
+		}
+
+		ComponentFilter.Draw("Search", 0); // TODO.NW: Figure out a nicer way of setting the width
 
 		if (GUI::BeginChild("NewComponentTypeTable", SVector2<F32>(0.0f, 200.0f)))
 		{
-			for (const SComponentEditorContext* context : owningScene->GetComponentEditorContexts())
+			for (const Ptr<SComponentView>& view : Manager->GetComponentViewsVector())
 			{
-				const char* newComponentName = context->GetComponentName();
+				const U64 viewHash = view->GetRuntimeHash();
+				const std::vector<U64>& existingComponentHashes = owningScene->EntityComponentRuntimeHashes.at(entity.GUID);
 				
 				bool hasComponent = false;
-				for (const SComponentEditorContext* existingContext : owningScene->GetComponentEditorContexts(entity))
+				for (const U64& componentHash : existingComponentHashes)
 				{
-					if (existingContext->GetComponentName() == newComponentName)
+					if (viewHash == componentHash)
 					{
 						hasComponent = true;
 						break;
 					}
 				}
-				
+
 				// TODO.NW: Should make a choice here whether to allow multiple components of the same type, 
 				// or continue working under the assumption that every component can handle all the data it needs for 
 				// its owning entity.
 				if (hasComponent)
 					continue;
+				
+				const char* newComponentName = view->GetComponentName();
 
-				if (!filter.PassFilter(newComponentName))
+				if (!ComponentFilter.PassFilter(newComponentName))
 					continue;
 
-				if (!GUI::Selectable(newComponentName))
-					continue;
-
-				if (context->AddComponent(entity, owningScene))
+				if (GUI::Selectable(newComponentName))
 				{
+					// Add component dependencies if needed
+					for (const U64& dependencyHash : Manager->GetComponentDependencies(viewHash))
+					{
+						if (std::ranges::find(existingComponentHashes, dependencyHash) == existingComponentHashes.end())
+							owningScene->ComponentSerializers.at(owningScene->TypeHashToTypeID.at(dependencyHash)).ComponentAdder(entity, owningScene);
+					}
+
+					owningScene->ComponentSerializers.at(owningScene->TypeHashToTypeID.at(viewHash)).ComponentAdder(entity, owningScene);
+
 					Manager->SetIsModalOpen(false);
 					GUI::CloseCurrentPopup();
 				}
 			}
-
 			GUI::EndChild();
 		}
 
@@ -569,5 +562,17 @@ namespace Havtorn
 
 			GUI::EndPopup();
 		}		
+	}
+
+	void CInspectorWindow::ReassignAssetRef(const U64 assetRequester, const std::vector<SAssetReference*>& references, const U8 index, const std::string& newPath)
+	{
+		std::string newAssetPath = UGeneralUtils::ConvertToPlatformAgnosticPath(newPath);
+
+		std::vector<std::string> paths = SAssetReference::GetPaths(references);
+
+		if (paths[index] != newAssetPath)
+			GEngine::GetAssetRegistry()->UnrequestAsset(SAssetReference(paths[index]), assetRequester);
+
+		*(references)[index] = SAssetReference(newAssetPath);
 	}
 }

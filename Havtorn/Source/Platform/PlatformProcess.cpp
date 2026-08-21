@@ -5,12 +5,8 @@
 
 namespace Havtorn
 {
-	CPlatformProcess::CPlatformProcess(U16 windowPosX, U16 windowPosY, U16 windowWidth, U16 windowHeight)
+	CPlatformProcess::CPlatformProcess()
 		: PlatformManager(nullptr)
-		, WindowPositionX(windowPosX)
-		, WindowPositionY(windowPosY)
-		, WindowWidth(windowWidth)
-		, WindowHeight(windowHeight)
 	{}
 
 	CPlatformProcess::~CPlatformProcess()
@@ -40,5 +36,10 @@ namespace Havtorn
 	void CPlatformProcess::BeginFrame()
 	{
 		PlatformManager->BeginFrame();
+	}
+
+	void CPlatformProcess::EndFrame()
+	{
+		PlatformManager->EndFrame();
 	}
 }

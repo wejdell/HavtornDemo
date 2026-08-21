@@ -7,7 +7,6 @@
 #include <GeneralUtilities.h>
 #include "ECS/Entity.h"
 #include "ECS/Component.h"
-#include "ECS/ComponentEditorContext.h"
 
 #include <unordered_map>
 #include <map>
@@ -27,9 +26,13 @@ namespace Havtorn
 		std::function<U32(const SEntity&, const CScene*)> SingleSizeAllocator;
 		std::function<void(const SEntity&, const CScene*, char*, U64&)> SingleSerializer;
 		std::function<void(const SEntity&, CScene*, const char*, U64&)> SingleDeserializer;
+		
 		std::function<U32(const CScene*)> SizeAllocator;
 		std::function<void(const CScene*, char*, U64&)> Serializer;
 		std::function<void(CScene*, const char*, U64&)> Deserializer;
+
+		std::function<void(const SEntity&, CScene*)> ComponentAdder;
+		std::function<void(const SEntity&, CScene*)> ComponentRemover;
 	};
 
 	class CAssetRegistry;
@@ -38,7 +41,7 @@ namespace Havtorn
 	{
 	public:
 		ENGINE_API CScene();
-		ENGINE_API ~CScene();
+		ENGINE_API virtual ~CScene();
 
 		ENGINE_API virtual bool Init(const std::string& sceneName);
 		ENGINE_API virtual bool Init3DDefaults();
@@ -79,26 +82,15 @@ namespace Havtorn
 			}
 		}
 
-		template<typename TComponent, typename TComponentEditorContext>
+		template<typename TComponent>
 		void RegisterTrivialComponent(U32 typeID, U32 startingNumberOfInstances = 10)
 		{
-			if (ContextIndices.contains(typeID))
-			{
-				//HV_LOG_WARN("%s is already registered in the %s scene.", typeid(T).name(), SceneName.AsString().c_str());
-				return;
-			}
-
 			if (ComponentTypeIndices.contains(typeID))
 			{
 				ComponentTypeIndices.emplace(typeID, Storages.size());
 				Storages.emplace_back();
 				Storages.back().Components.resize(startingNumberOfInstances, nullptr);
 			}
-
-			ContextIndices.emplace(typeID, RegisteredComponentEditorContexts.size());
-			RegisteredComponentEditorContexts.emplace_back(&TComponentEditorContext::Context);
-
-			std::sort(RegisteredComponentEditorContexts.begin(), RegisteredComponentEditorContexts.end(), [](const SComponentEditorContext* a, const SComponentEditorContext* b) { return a->GetSortingPriority() < b->GetSortingPriority(); });
 
 			TypeHashToTypeID.emplace(typeid(TComponent).hash_code(), typeID);
 
@@ -145,7 +137,6 @@ namespace Havtorn
 					DeserializeData(component, fromData, pointerPosition);
 					component.Owner = entity;
 					scene->AddComponent(component, entity);
-					scene->AddComponentEditorContext(entity, &TComponentEditorContext::Context);	
 				};
 
 			serializer.SizeAllocator =
@@ -204,22 +195,27 @@ namespace Havtorn
 						TComponent component;
 						DeserializeData(component, fromData, pointerPosition);
 						scene->AddComponent(component, component.Owner);
-						scene->AddComponentEditorContext(component.Owner, &TComponentEditorContext::Context);
 					}
 				};				
 			
+			serializer.ComponentAdder =
+				[](const SEntity& entity, CScene* scene)
+				{
+					scene->AddComponent<TComponent>(entity);
+				};
+
+			serializer.ComponentRemover =
+				[](const SEntity& entity, CScene* scene)
+				{
+					scene->RemoveComponent<TComponent>(entity);
+				};
+
 			ComponentSerializers[typeID] = serializer;
 		}
 
-		template<typename TComponent, typename TComponentEditorContext>
+		template<typename TComponent>
 		void RegisterNonTrivialComponent(U32 typeID, U32 startingNumberOfInstances = 10)
 		{
-			if (ContextIndices.contains(typeID))
-			{
-				//HV_LOG_WARN("%s is already registered in the %s scene.", typeid(T).name(), SceneName.AsString().c_str());
-				return;
-			}
-
 			if (ComponentTypeIndices.contains(typeID))
 			{
 				ComponentTypeIndices.emplace(typeID, Storages.size());
@@ -227,10 +223,7 @@ namespace Havtorn
 				Storages.back().Components.resize(startingNumberOfInstances, nullptr);
 			}
 
-			ContextIndices.emplace(typeID, RegisteredComponentEditorContexts.size());
-			RegisteredComponentEditorContexts.emplace_back(&TComponentEditorContext::Context);
-
-			std::sort(RegisteredComponentEditorContexts.begin(), RegisteredComponentEditorContexts.end(), [](const SComponentEditorContext* a, const SComponentEditorContext* b) { return a->GetSortingPriority() < b->GetSortingPriority(); });
+			TypeHashToTypeID.emplace(typeid(TComponent).hash_code(), typeID);
 
 			SComponentSerializer serializer;
 			serializer.SingleSizeAllocator =
@@ -273,7 +266,6 @@ namespace Havtorn
 					component.Deserialize(fromData, pointerPosition);
 					component.Owner = entity;
 					scene->AddComponent(component, entity);
-					scene->AddComponentEditorContext(entity, &TComponentEditorContext::Context);
 				};
 
 			serializer.SizeAllocator =
@@ -324,11 +316,21 @@ namespace Havtorn
 						TComponent component;
 						component.Deserialize(fromData, pointerPosition);
 						scene->AddComponent(component, component.Owner);
-						scene->AddComponentEditorContext(component.Owner, &TComponentEditorContext::Context);
 					}
 				};
 			
-			TypeHashToTypeID.emplace(typeid(TComponent).hash_code(), typeID);
+			serializer.ComponentAdder =
+				[](const SEntity& entity, CScene* scene)
+				{
+					scene->AddComponent<TComponent>(entity);
+				};
+
+			serializer.ComponentRemover =
+				[](const SEntity& entity, CScene* scene)
+				{
+					scene->RemoveComponent<TComponent>(entity);
+				};
+
 			ComponentSerializers[typeID] = serializer;
 		}
 
@@ -366,6 +368,7 @@ namespace Havtorn
 				componentStorage.Components.emplace_back(new T(toEntity, params...));
 			}
 
+			EntityComponentRuntimeHashes.at(toEntity.GUID).push_back(typeid(T).hash_code());
 			return dynamic_cast<T*>(componentStorage.Components.back());
 		}
 
@@ -412,6 +415,7 @@ namespace Havtorn
 
 			components.erase(components.begin() + entityIndices.at(fromEntity.GUID));
 			entityIndices.erase(fromEntity.GUID);
+			std::erase(EntityComponentRuntimeHashes.at(fromEntity.GUID), typeid(T).hash_code());
 		}
 
 		template<typename... Ts>
@@ -426,14 +430,14 @@ namespace Havtorn
 		ENGINE_API void RemoveEntity(const SEntity entity);
 		ENGINE_API void ClearScene();
 		ENGINE_API void MoveEntityToScene(const SEntity& entity, CScene* fromScene);
-		ENGINE_API SEntity CopyEntity(const SEntity& fromEntity);
-		ENGINE_API std::vector<SEntity> CopyEntities(CScene* fromScene);
+		ENGINE_API SEntity CopyEntity(const SEntity& fromEntity, U64 guid = 0);
+		ENGINE_API std::vector<SEntity> CopyEntities(CScene* fromScene, std::vector<U64> requestedGUIDs);
 
 		ENGINE_API std::string GetEntityStringBuffer(const SEntity& entity);
 		ENGINE_API SEntity AddEntityFromStringBuffer(const std::string& buffer, const bool makeUnique = false);
 
 		// NW: Sorted leaf-entities first, INCLUDES parent
-		ENGINE_API void GetAttachedEntities(const SEntity& parentEntity, std::vector<SEntity>& outEntities);
+		ENGINE_API void GetAttachedEntities(const SEntity& parentEntity, std::vector<SEntity>& outEntities) const;
 
 		template<typename T>
 		const SEntity& GetEntity(const T* fromComponent) const
@@ -526,29 +530,17 @@ namespace Havtorn
 			const SComponentStorage& componentStorage = Storages[ComponentTypeIndices.at(typeID)];
 			return componentStorage.Components;
 		}
-
-		ENGINE_API void AddComponentEditorContext(const SEntity& owner, SComponentEditorContext* context);
-		ENGINE_API void RemoveComponentEditorContext(const SEntity& owner, SComponentEditorContext* context);
-
-		ENGINE_API void RemoveComponentEditorContexts(const SEntity& owner);
-		ENGINE_API std::vector<SComponentEditorContext*> GetComponentEditorContexts(const SEntity& owner);
-
-		// TODO.NW: Move this to World, so that it persists over scenes. Same as with Nodes
-		ENGINE_API const std::vector<SComponentEditorContext*>& GetComponentEditorContexts() const;
 	
 		std::unordered_map<U32, SComponentSerializer> ComponentSerializers;
 		std::unordered_map<U64, U32> TypeHashToTypeID;
 
-		std::unordered_map<U64, std::vector<SComponentEditorContext*>> EntityComponentEditorContexts;
+		std::unordered_map<U64, std::vector<U64>> EntityComponentRuntimeHashes;
 
 		std::unordered_map<U64, U64> EntityIndices;
 		std::vector<SEntity> Entities;
 
 		std::unordered_map<U32, U64> ComponentTypeIndices;
 		std::vector<SComponentStorage> Storages;
-
-		std::unordered_map<U32, U64> ContextIndices;
-		std::vector<SComponentEditorContext*> RegisteredComponentEditorContexts;
 
 		CHavtornStaticString<255> SceneName = std::string("SceneName");
 

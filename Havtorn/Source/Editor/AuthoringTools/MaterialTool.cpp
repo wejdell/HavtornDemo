@@ -120,12 +120,11 @@ namespace Havtorn
 				GUI::BeginChild("Cubemap", settingsPropertySize);
 				auto skyboxAssetRep = Manager->GetAssetRepFromName(UGeneralUtils::ExtractFileBaseNameFromPath(PreviewSkylightAssetRef.FilePath)).get();
 
-				intptr_t assetPickerThumbnail = Manager->GetTextureResourceFromAssetRep(skyboxAssetRep);
 				std::string pickerLabel = "Preview Skybox | ";
 				if (skyboxAssetRep != nullptr)
 					pickerLabel.append(skyboxAssetRep->Name);
 
-				SAssetPickResult result = GUI::AssetPickerFilter(pickerLabel.c_str(), "Preview Skybox", assetPickerThumbnail, "Assets/Textures/Cubemaps", 4, Manager->GetAssetFilteredInspectFunction(), EAssetType::TextureCube);
+				SAssetPickResult result = Manager->AssetPickerDropdown(pickerLabel.c_str(), EAssetType::TextureCube, skyboxAssetRep);
 
 				if (result.State == EAssetPickerState::AssetPicked)
 				{
@@ -148,6 +147,14 @@ namespace Havtorn
 				GUI::ColorPicker3("Preview Light Color", PreviewLightColor);
 				GUI::PopItemWidth();
 				GUI::EndChild();
+
+				GUI::SameLine();
+
+				GUI::BeginChild("Camera", settingsPropertySize);
+				GUI::PushItemWidth(78.0f);
+				GUI::DragFloat("Preview Rotation Speed", PreviewRotationSpeed, 0.01f);
+				GUI::PopItemWidth();
+				GUI::EndChild();
 			}
 
 			GUI::EndChild();
@@ -160,12 +167,6 @@ namespace Havtorn
 
 			auto inspect = [this](SRuntimeGraphicsMaterialProperty& property, const std::string& label) 
 				{
-					constexpr F32 materialPropertyWidth = 32.0f;
-					const F32 thumbnailPadding = 4.0f;
-					const F32 cellWidth = materialPropertyWidth + thumbnailPadding;
-					const F32 panelWidth = 256.0f;
-					const I32 columnCount = static_cast<I32>(panelWidth / cellWidth);
-
 					GUI::PushID(label.c_str());
 
 					GUI::TextDisabled(label.c_str());
@@ -184,12 +185,12 @@ namespace Havtorn
 						std::string assetPath = GEngine::GetAssetRegistry()->GetAssetDatabaseEntry(property.TextureUID);
 						auto assetRep = Manager->GetAssetRepFromName(UGeneralUtils::ExtractFileBaseNameFromPath(assetPath)).get();
 
-						intptr_t assetPickerThumbnail = Manager->GetTextureResourceFromAssetRep(assetRep);
 						std::string pickerLabel = "";
 						if (assetRep != nullptr)
 							pickerLabel.append(assetRep->Name);
 						
-						SAssetPickResult result = GUI::AssetPickerFilter(pickerLabel.c_str(), "Texture", assetPickerThumbnail, "Assets/Textures", columnCount, Manager->GetAssetFilteredInspectFunction(), EAssetType::Texture, SVector2<F32>(materialPropertyWidth));
+						constexpr F32 materialPropertyWidth = 32.0f;
+						SAssetPickResult result = Manager->AssetPickerDropdown(pickerLabel.c_str(), EAssetType::Texture, assetRep, SVector2<F32>(materialPropertyWidth));
 
 						if (result.State == EAssetPickerState::AssetPicked)
 						{
@@ -243,9 +244,14 @@ namespace Havtorn
 		GUI::End();
 	}
 
-	void CMaterialTool::OnDisable()
+	void CMaterialTool::OnDeferredExit()
 	{
 		CloseMaterial();
+	}
+
+	void CMaterialTool::OnDisable()
+	{
+		RunDeferredExit = true;
 
 		GEngine::GetWorld()->UnblockSystem<CCameraSystem>(this);
 
@@ -258,6 +264,9 @@ namespace Havtorn
 
 	void CMaterialTool::OpenMaterial(SEditorAssetRepresentation* asset)
 	{
+		if (IsEnabled)
+			CloseMaterial();
+
 		CurrentMaterial = asset;
 
 		// TODO.NW: Want nicer interface for opening assets and closing them when saving
@@ -286,15 +295,14 @@ namespace Havtorn
 	{
 		CAssetRegistry* assetRegistry = GEngine::GetAssetRegistry();
 		if (CurrentMaterial)
-			assetRegistry->UnrequestAsset(SAssetReference(CurrentMaterial->DirectoryEntry.path().string()), CAssetRegistry::EditorManagerRequestID);
+			assetRegistry->UnrequestAsset(SAssetReference(CurrentMaterial->DirectoryEntry.path().string()), MaterialToolRenderID);
 
 		assetRegistry->UnrequestAsset(PreviewSkylightAssetRef, MaterialToolRenderID);
+		PreviewSkylight = nullptr;
 
 		CurrentMaterial = nullptr;
 		MaterialData = SEngineGraphicsMaterial();
 		Manager->GetRenderManager()->UnrequestRenderView(MaterialToolRenderID);
-
-		SetEnabled(false);
 	}
 
 	void CMaterialTool::OnZoomInput(const SInputAxisPayload payload)
@@ -316,10 +324,10 @@ namespace Havtorn
 		switch (payload.Event)
 		{
 		case EInputAxisEvent::MouseDeltaVertical:
-			RotationInput.X +=  -payload.AxisValue * rotationSpeed * GTime::Dt();
+			RotationInput.X +=  -payload.AxisValue * rotationSpeed * PreviewRotationSpeed * GTime::Dt();
 			return;
 		case EInputAxisEvent::MouseDeltaHorizontal:
-			RotationInput.Y += payload.AxisValue * rotationSpeed * GTime::Dt();
+			RotationInput.Y += payload.AxisValue * rotationSpeed * PreviewRotationSpeed * GTime::Dt();
 			return;
 		default:
 			return;

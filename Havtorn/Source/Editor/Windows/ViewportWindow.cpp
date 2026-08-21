@@ -304,31 +304,27 @@ namespace Havtorn
 		CScene* currentScene = assetDragScene;
 		if (currentScene != nullptr)
 		{
-			if (GUI::BeginDragDropTarget())
+			auto result = CEditorManager::AssetDragData.TryDeliver({ EDragDropFlag::AcceptBeforeDelivery, EDragDropFlag::AcceptNopreviewTooltip });
+			if (result.Result != EDragDeliverResult::Invalid && result.Payload != nullptr)
 			{
-				SGuiPayload payload = GUI::AcceptDragDropPayload("AssetDrag", { EDragDropFlag::AcceptBeforeDelivery, EDragDropFlag::AcceptNopreviewTooltip });
-				if (payload.Data != nullptr)
+				SEditorAssetRepresentation* payloadAssetRep = result.Payload;
+
+				if (payloadAssetRep->AssetType == EAssetType::Material)
+					UpdatePreviewMaterial(currentScene, payloadAssetRep);
+				else
+					UpdatePreviewEntity(currentScene, payloadAssetRep);
+
+				if (currentScene->PreviewEntity.IsValid())
+					GUI::SetTooltip("Create Entity?");
+				else if (payloadAssetRep->AssetType == EAssetType::Material)
+					GUI::SetTooltip("Assign Material?");
+				else
+					GUI::SetTooltip("Asset type not supported yet!");
+
+				if (result.Result == EDragDeliverResult::Delivered)
 				{
-					SEditorAssetRepresentation* payloadAssetRep = reinterpret_cast<SEditorAssetRepresentation*>(payload.Data);
-					if (payloadAssetRep->AssetType == EAssetType::Material)
-						UpdatePreviewMaterial(currentScene, payloadAssetRep);
-					else
-						UpdatePreviewEntity(currentScene, payloadAssetRep);
-
-					if (currentScene->PreviewEntity.IsValid())
-						GUI::SetTooltip("Create Entity?");
-					else if (payloadAssetRep->AssetType == EAssetType::Material)
-						GUI::SetTooltip("Assign Material?");
-					else
-						GUI::SetTooltip("Asset type not supported yet!");
-
-					if (payload.IsDelivery)
-					{
-						DeliverAssetDrag(currentScene, payloadAssetRep);
-					}
+					DeliverAssetDrag(currentScene, payloadAssetRep);
 				}
-
-				GUI::EndDragDropTarget();
 			}
 			else
 			{
@@ -376,7 +372,6 @@ namespace Havtorn
 		GEngine::GetWorld()->SetEditorRenderExemptEntity(scene->PreviewEntity);
 
 		scene->AddComponent<STransformComponent>(scene->PreviewEntity)->Transform;
-		scene->AddComponentEditorContext(scene->PreviewEntity, &STransformComponentEditorContext::Context);
 
 		CAssetRegistry* assetRegistry = GEngine::GetAssetRegistry();
 
@@ -386,13 +381,11 @@ namespace Havtorn
 		{
 			std::string staticMeshPath = assetRepresentation->DirectoryEntry.path().string();
 			scene->AddComponent<SStaticMeshComponent>(scene->PreviewEntity, staticMeshPath);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SStaticMeshComponentEditorContext::Context);
 			SStaticMeshAsset* meshAsset = assetRegistry->RequestAssetData<SStaticMeshAsset>(SAssetReference(staticMeshPath), scene->PreviewEntity.GUID);
 
 			std::vector<std::string> previewMaterials;
 			previewMaterials.resize(meshAsset->NumberOfMaterials, CEditorManager::PreviewMaterial);
 			scene->AddComponent<SMaterialComponent>(scene->PreviewEntity, previewMaterials);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SMaterialComponentEditorContext::Context);
 		}
 			break;
 
@@ -400,7 +393,6 @@ namespace Havtorn
 		{
 			std::string meshPath = assetRepresentation->DirectoryEntry.path().string();
 			scene->AddComponent<SSkeletalMeshComponent>(scene->PreviewEntity, meshPath);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SSkeletalMeshComponentEditorContext::Context);
 			SSkeletalMeshAsset* meshAsset = assetRegistry->RequestAssetData<SSkeletalMeshAsset>(SAssetReference(meshPath), scene->PreviewEntity.GUID);
 			
 			// TODO.NW: Deal with different asset types, and figure out bind pose for skeletal meshes
@@ -408,7 +400,6 @@ namespace Havtorn
 			std::vector<std::string> previewMaterials;
 			previewMaterials.resize(meshAsset->NumberOfMaterials, CEditorManager::PreviewMaterial);
 			scene->AddComponent<SMaterialComponent>(scene->PreviewEntity, previewMaterials);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SMaterialComponentEditorContext::Context);
 		}
 			break;
 
@@ -418,17 +409,14 @@ namespace Havtorn
 			SSkeletalAnimationAsset* animationAsset = assetRegistry->RequestAssetData<SSkeletalAnimationAsset>(SAssetReference(animationPath), scene->PreviewEntity.GUID);
 			const std::vector<std::string> animationPaths = { animationPath };
 			scene->AddComponent<SSkeletalAnimationComponent>(scene->PreviewEntity, animationPaths);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SSkeletalAnimationComponentEditorContext::Context);
 
 			const std::string meshPath = animationAsset->RigPath;
 			scene->AddComponent<SSkeletalMeshComponent>(scene->PreviewEntity, meshPath);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SSkeletalMeshComponentEditorContext::Context);
 			SSkeletalMeshAsset* meshAsset = assetRegistry->RequestAssetData<SSkeletalMeshAsset>(SAssetReference(meshPath), scene->PreviewEntity.GUID);
 
 			std::vector<std::string> previewMaterials;
 			previewMaterials.resize(meshAsset->NumberOfMaterials, CEditorManager::PreviewMaterial);
 			scene->AddComponent<SMaterialComponent>(scene->PreviewEntity, previewMaterials);
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SMaterialComponentEditorContext::Context);
 		}
 			break;
 
@@ -437,7 +425,6 @@ namespace Havtorn
 			// TODO.NW: Handle prefab previs/preview
 			
 			scene->AddComponent<SPrefabComponent>(scene->PreviewEntity, assetRepresentation->DirectoryEntry.path().string());
-			scene->AddComponentEditorContext(scene->PreviewEntity, &SPrefabComponentEditorContext::Context);
 		}
 			break;
 
@@ -523,7 +510,7 @@ namespace Havtorn
 			toScene->PreviewEntity = SEntity::Null;
 
 			const SPrefabAsset* prefab = GEngine::GetAssetRegistry()->RequestAssetData<SPrefabAsset>(SAssetReference(assetRepresentation->DirectoryEntry.path().string()), copiedEntity.GUID);
-			std::vector<SEntity> newEntities = toScene->CopyEntities(prefab->Scene.get());
+			std::vector<SEntity> newEntities = toScene->CopyEntities(prefab->Scene.get(), {});
 
 			STransformComponent* parentTransform = toScene->GetComponent<STransformComponent>(copiedEntity);
 			for (const SEntity& entity : newEntities)
@@ -611,6 +598,9 @@ namespace Havtorn
 
 	void CViewportWindow::SetContextMenuEntity(const SEntity& entity)
 	{
+		if (!entity.IsValid())
+			return;
+
 		ContextMenuEntity = entity;
 
 		// TODO.NW: Decide what feels best here, to clear all selections or select the picked one

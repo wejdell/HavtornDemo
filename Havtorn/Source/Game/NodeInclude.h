@@ -3,11 +3,7 @@
 #pragma once
 #include "GhostyNode.h"
 
-#include "Ghosty/SGhostyNodeEditorContext.h"
 #include "HexRune/InterpolatePosition.h"
-#include "HexRune/NodeEditorContext/InterpolatePositionNodeEditorContext.h"
 #include "HexRune/TimerNode.h"
-#include "HexRune/NodeEditorContext/TimerNodeEditorContext.h"
 
 #include "HexRune/SetPositionNode.h"
-#include "HexRune/NodeEditorContext/SetPositionNodeEditorContext.h"

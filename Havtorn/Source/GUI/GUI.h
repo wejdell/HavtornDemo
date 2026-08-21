@@ -429,8 +429,6 @@ namespace Havtorn
 		int                     CountGrep;
 	};
 
-
-
 	struct SGuiPayload
 	{
 		void* Data = nullptr;
@@ -606,122 +604,12 @@ namespace Havtorn
 		F32 TabRounding = 1.f;
 	};
 
-	struct SAssetInspectionData
-	{
-		SAssetInspectionData(const std::string& name, const intptr_t textureRef)
-			: Name(name)
-			, TextureRef(textureRef)
-			, AssetPath()
-		{}
-		
-		SAssetInspectionData(const std::string& name, const intptr_t textureRef, const std::string& assetPath)
-			: Name(name)
-			, TextureRef(textureRef)
-			, AssetPath(assetPath)
-		{}
-
-		bool IsValid() const
-		{
-			return Name.size() > 0 && AssetPath.size() > 0 && TextureRef != 0;
-		}
-
-		std::string Name = "";
-		std::string AssetPath = ""; //TODO.AS Replace with AssetRegistry GUID later on
-		intptr_t TextureRef = 0;
-	};
-
-	using DirEntryFunc = const std::function<SAssetInspectionData(std::filesystem::directory_entry)>;
-	using DirEntryEAssetTypeFunc = const std::function<SAssetInspectionData(std::filesystem::directory_entry, const EAssetType assetTypeFilter)>;
-
-	enum class EAssetPickerState
-	{
-		Inactive,
-		Active,
-		AssetPicked,
-		Cancelled,
-		ContextMenu,
-		GetFromSelected,
-		FindInBrowser
-	};
-
-	struct SAssetPickResult
-	{
-		SAssetPickResult() = default;
-		SAssetPickResult(EAssetPickerState state)
-			: State(state)
-		{}
-		SAssetPickResult(const std::filesystem::directory_entry& entry)
-			: State(EAssetPickerState::AssetPicked)
-			, PickedEntry(entry)
-		{}
-		EAssetPickerState State = EAssetPickerState::Inactive;
-		std::filesystem::directory_entry PickedEntry;
-		bool IsHovered = false;
-	};
-
-	struct SRenderAssetCardResult
-	{
-		SRenderAssetCardResult() = default;
-		
-		std::optional<std::string> NewAssetName;
-		bool IsClicked = false;
-		bool IsDoubleClicked = false;
-		bool IsHovered = false;
-	};
-
 	struct SAlignedButtonData
 	{
 		std::function<void()> Function;
 		intptr_t ImageRef = 0;
 		bool IsIndented = false;
 		std::string Tooltip = "";
-	};
-
-	// TODO.NW: static asserts to make sure they're equal in length to code based enums?
-	enum class EGUIPinType : U8
-	{
-		Unknown,
-		Bool,
-		Int,
-		Float,
-		String,
-		Vector,
-		Matrix,
-		Quaternion,
-		Entity,
-		ComponentPtr,
-		Asset,
-		EntityList,
-		ComponentPtrList,
-
-		//Other stuff
-		Delegate,
-		Function,
-		Flow
-	};
-
-	enum class EGUIObjectDataType : U8
-	{
-		None,
-		Entity,
-		Component
-	};
-
-	enum class EGUIAssetType : U8
-	{
-		None,
-		StaticMesh,
-		SkeletalMesh,
-		Texture,
-		Material,
-		Animation,
-		SpriteAnimation,
-		AudioOneShot,
-		AudioCollection,
-		VisualFX,
-		Scene,
-		Sequencer,
-		Script
 	};
 
 	enum class EGUIIconType 
@@ -740,85 +628,41 @@ namespace Havtorn
 		Output
 	};
 
-	enum class EGUINodeType
+	enum class EDragDeliverResult
 	{
-		Execution,
-		Simple,
-		Tree,
-		Comment,
+		Invalid,
+		Hovering,
+		Delivered
+	};
+	
+	enum class EGUIToastNotificationType
+	{
+		Success,
+		Warning,
+		Error,
+		Info
 	};
 
-	struct SGUILink
+	template<typename T>
+	struct SDragDropDelivery
 	{
-		U64 UID = 0;
-		U64 StartPinID = 0;
-		U64 EndPinID = 0;
+		EDragDeliverResult Result = EDragDeliverResult::Invalid;
+		T* Payload = nullptr;
 	};
 
-	struct SGUINode;
-	struct SGUIPin
+	template<typename T>
+	struct SDragDropStruct
 	{
-		SGUIPin(U64 id, EGUIPinType type, EGUIPinDirection direction, SGUINode* node, const std::string& name)
-			: UID(id)
-			, Type(type)
-			, Direction(direction)
-			, Node(node)
-			, Name(name)
-		{}
-		SGUIPin() = default;
+		SDragDropStruct(const std::string_view id);
 
-		U64 UID = 0;
-		EGUIPinType Type = EGUIPinType::Flow;
-		EGUIPinDirection Direction = EGUIPinDirection::Input;
-		SGUINode* Node = nullptr;
-#pragma warning(suppress : 4324)
-		std::variant<PIN_LITERAL_TYPES, PIN_MATH_TYPES> Data; // NW: Only literal data types need to set data from GUI->Engine, when they are unpinned.
-		std::string Name = "";
+		bool TrySet(T& data, const std::string_view defaultTooltip, const std::vector<EDragDropFlag>& flags);
+		SDragDropDelivery<T> TryDeliver(const std::vector<EDragDropFlag>& flags);
 
-		bool IsDataUnset() const { return std::holds_alternative<std::monostate>(Data); }
-	};
+	private:
+		const char* ID = "";
 
-	struct SGUINode
-	{
-		U64 UID = 0;
-		EGUINodeType Type = EGUINodeType::Execution;
-		std::vector<SGUIPin> Inputs = {};
-		std::vector<SGUIPin> Outputs = {};
-		
-		std::string Name = "";
-		SColor Color = SColor::White;
-		SVector2<F32> Position = SVector2<F32>();
-		bool HasBeenInitialized = false;
-	};
-
-	struct SGUINodeContext
-	{
-		std::string Name = "";
-		std::string Category = "General";
-		I64 Index = -1;
-	};
-
-	struct SGUIDataBinding
-	{
-		CHavtornStaticString<255> Name;
-		EGUIPinType Type = EGUIPinType::Unknown;
-		EGUIObjectDataType ObjectType = EGUIObjectDataType::None;
-		EGUIAssetType AssetType = EGUIAssetType::None;
-		U8 CurrentPinTypeIndex = 0;
-		U8 CurrentObjectTypeIndex = 0;
-
-	};
-
-	struct SNodeOperation
-	{
-		SGUIDataBinding NewBinding;
-		U64 RemovedBindingID;
-		SGUIPin ModifiedLiteralValuePin;
-		SGUINodeContext NewNodeContext;
-		SVector2<F32> NewNodePosition = SVector2<F32>::Zero;
-		SGUILink NewLink;
-		std::vector<SGUINode> RemovedNodes;
-		std::vector<SGUILink> RemovedLinks;
+		// NW: We assign drag-drop data to our own pointer so imgui doesn't free it at the end of the delivery scope
+		T* Data = nullptr;
 	};
 
 	class GUI_API GUI
@@ -863,6 +707,8 @@ namespace Havtorn
 		static void CenterText(const std::string& text, SVector2<F32> dimensions, SVector2<F32> alignment = SVector2<F32>(0.5f));
 
 		static void SetTooltip(const char* fmt, ...);
+
+		static void PushNotification(const EGUIToastNotificationType type, const I32 durationMS, const char* fmt, ...);
 
 		static SVector2<F32> CalculateTextSize(const char* text);
 
@@ -998,11 +844,7 @@ namespace Havtorn
 
 		static void AddViewportButtons(const std::vector<SAlignedButtonData>& buttons, const SVector2<F32>& buttonSize, const F32 alignWidth);
 
-		static SAssetPickResult AssetPicker(const char* label, const char* modalLabel, intptr_t image, const std::string& directory, I32 columns, const DirEntryFunc& assetInspector, const SVector2<F32>& pickerSize = SVector2<F32>(48.0f));
-		static SAssetPickResult AssetPickerFilter(const char* label, const char* modalLabel, intptr_t image, const std::string& directory, I32 columns, const DirEntryEAssetTypeFunc& assetInspector, EAssetType assetType, const SVector2<F32>& pickerSize = SVector2<F32>(48.0f));
-		static SAssetPickResult AssetPickerDropdownFilter(const char* label, const char* assetDetailLabel, intptr_t image, intptr_t sourceButtonImage, intptr_t findButtonImage, const std::string& directory, I32 columns, const DirEntryEAssetTypeFunc& assetInspector, EAssetType assetType, const SVector2<F32>& pickerSize = SVector2<F32>(48.0f));
 		static void TagPickerDropdown(const char* label, const char* tooltip, SGameplayTagContainer& tags, const SVector2<F32>& pickerSize = SVector2<F32>(48.0f));
-		static SRenderAssetCardResult RenderAssetCard(const char* label, const bool isSelected, const bool isBeingNamed, const intptr_t& thumbnailID, const char* typeName, const SColor& color, const SColor& borderColor, void* dragDropPayloadToSet, U64 payLoadSize);
 
 		static bool Selectable(const char* label, const bool selected = false, const std::vector<ESelectableFlag>& flags = {}, const SVector2<F32>& size = SVector2<F32>(0.0f));
 
@@ -1097,6 +939,8 @@ namespace Havtorn
 
 		static void SetNextWindowPos(const SVector2<F32>& pos, const EWindowCondition condition = EWindowCondition::None, const SVector2<F32>& pivot = SVector2<F32>(0.0f));
 		static void SetNextWindowSize(const SVector2<F32>& size);
+		static void SetNextWindowSizeConstraints(const SVector2<F32>& sizeMin, const SVector2<F32>& sizeMax);
+
 		static void SetWindowPos(const char* label, const SVector2<F32>& pos);
 		static void SetWindowSize(const char* label, const SVector2<F32>& size);
 		static void SetGizmoRect(const SVector2<F32>& position, const SVector2<F32>& dimensions);
@@ -1173,4 +1017,61 @@ namespace Havtorn
 		ImGuiImpl* Impl;
 		static GUI* Instance;
 	};
+
+	template<typename T>
+	inline SDragDropStruct<T>::SDragDropStruct(const std::string_view id)
+		: ID(id.data())
+	{
+	}
+
+	template<typename T>
+	inline bool SDragDropStruct<T>::TrySet(T& data, const std::string_view defaultTooltip, const std::vector<EDragDropFlag>& flags)
+	{
+		if (GUI::BeginDragDropSource(flags))
+		{
+			SGuiPayload payload = GUI::GetDragDropPayload();
+			if (payload.Data == nullptr)
+			{
+				Data = &data;
+
+				// NW: Note that we store the payload on the imgui side to keep imgui logic working
+				GUI::SetDragDropPayload(ID, &data, sizeof(T));
+				
+				GUI::Text(defaultTooltip.data());
+				GUI::EndDragDropSource();
+				return true;
+			}
+
+			GUI::Text(defaultTooltip.data());
+			GUI::EndDragDropSource();
+		}
+
+		return false;
+	}
+
+	template<typename T>
+	inline SDragDropDelivery<T> SDragDropStruct<T>::TryDeliver(const std::vector<EDragDropFlag>& flags)
+	{
+		SDragDropDelivery<T> returnValue;
+
+		if (GUI::BeginDragDropTarget())
+		{
+			SGuiPayload payload = GUI::AcceptDragDropPayload(ID, flags);
+			if (payload.Data != nullptr)
+			{
+				returnValue.Payload = Data;
+				
+				if (payload.IsDelivery)
+				{
+					Data = nullptr;
+				}
+
+				returnValue.Result = payload.IsDelivery ? EDragDeliverResult::Delivered : EDragDeliverResult::Hovering;
+			}
+
+			GUI::EndDragDropTarget();
+		}
+
+		return returnValue;
+	}
 }

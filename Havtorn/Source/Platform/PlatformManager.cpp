@@ -247,9 +247,33 @@ namespace Havtorn
 		HitTestData.BlockHitTest = shouldBlock;
 	}
 
+	void CPlatformManager::SetCursorLock(const bool shouldLock)
+	{
+		SDL_SetWindowRelativeMouseMode(Window, shouldLock);
+		SDL_SetWindowMouseGrab(Window, shouldLock);
+		if (shouldLock)
+		{
+			const SDL_Rect rect = { STATIC_U16(Resolution.X * 0.5f), STATIC_U16(Resolution.Y * 0.5f), 1, 1};
+			SDL_SetWindowMouseRect(Window, &rect);
+		}
+		else
+		{
+			SDL_SetWindowMouseRect(Window, nullptr);
+		}
+	}
+
+	bool CPlatformManager::IsCursorLocked() const
+	{
+		return SDL_GetWindowRelativeMouseMode(Window);
+	}
+
 	void CPlatformManager::BeginFrame()
 	{
 		EventLoop();
+	}
+
+	void CPlatformManager::EndFrame()
+	{
 	}
 
 	void CPlatformManager::EventLoop()

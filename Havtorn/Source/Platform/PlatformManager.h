@@ -27,6 +27,7 @@ namespace Havtorn
 	public:
 		void BeginFrame();
 		void EventLoop();
+		void EndFrame();
 
 		PLATFORM_API SVector2<U16> GetResolution() const;
 		PLATFORM_API void UpdateResolution();
@@ -47,6 +48,9 @@ namespace Havtorn
 		PLATFORM_API void OnApplicationReady();
 
 		PLATFORM_API void SetBlockWindowHitTest(const bool shouldBlock);
+
+		PLATFORM_API void SetCursorLock(const bool shouldLock);
+		PLATFORM_API bool IsCursorLocked() const;
 
 	private:
 		CPlatformManager();

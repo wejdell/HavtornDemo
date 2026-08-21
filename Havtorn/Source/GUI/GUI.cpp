@@ -4,9 +4,11 @@
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <misc/cpp/imgui_stdlib.h>
-//#include <backends/imgui_impl_win32.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_dx11.h>
+#include <backends/ImGuiNotify.h>
+#include <backends/IconsFontAwesome6.h>
+#include <backends/fa-solid-900.h>
 #include <ImGuizmo.h>
 #include <imgui_node_editor.h>
 #include <utilities/builders.h>
@@ -19,12 +21,13 @@
 #include <MathTypes/Vector.h>
 #include <MathTypes/Matrix.h>
 #include <Color.h>
-
-#include <string>
-#include <Log.h>
+#include <FileSystem.h>
 
 #include <PlatformManager.h>
 #include <SDL3/SDL.h>
+
+#include <string>
+#include <Log.h>
 
 namespace Havtorn
 {
@@ -63,7 +66,6 @@ namespace Havtorn
 			ImGui::CreateContext();
 			ImGui::DebugCheckVersionAndDataLayout(Version, sizeof(ImGuiIO), sizeof(ImGuiStyle), sizeof(ImVec2), sizeof(ImVec4), sizeof(ImDrawVert), sizeof(ImDrawIdx));
 			PrimaryFont = ImGui::GetIO().Fonts->AddFontFromFileTTF(DefaultFont, DefaultFontSize);
-			SecondaryFont = ImGui::GetIO().Fonts->AddFontFromFileTTF(DefaultFont, 10.0f);
 			ImGuizmo::SetImGuiContext(ImGui::GetCurrentContext());
 
 			ImGui_ImplSDL3_InitForD3D(window);
@@ -87,6 +89,19 @@ namespace Havtorn
 			DirectX::CreateShaderResourceView(device, image, scratchImage.GetImageCount(), metaData, &BlueprintBackgroundSRV);
 
 			BlueprintBackgroundImage = (ImTextureID)BlueprintBackgroundSRV;
+
+			// NW: ImGuiNotify is expecting the icon font to be on the 1st font index
+			constexpr F32 baseFontSize = 16.0f;
+			constexpr F32 iconFontSize = baseFontSize * 2.0f / 3.0f; // FontAwesome fonts need to have their sizes reduced by 2.0f/3.0f in order to align correctly
+
+			static constexpr ImWchar iconsRanges[] = { ICON_MIN_FA, ICON_MAX_16_FA, 0 };
+			ImFontConfig iconsConfig;
+			iconsConfig.MergeMode = true;
+			iconsConfig.PixelSnapH = true;
+			iconsConfig.GlyphMinAdvanceX = iconFontSize;
+			ImGui::GetIO().Fonts->AddFontFromMemoryCompressedTTF(fa_solid_900_compressed_data, fa_solid_900_compressed_size, iconFontSize, &iconsConfig, iconsRanges);
+			
+			SecondaryFont = ImGui::GetIO().Fonts->AddFontFromFileTTF(DefaultFont, 10.0f);
 		}
 
 		void BeginFrame()
@@ -104,6 +119,13 @@ namespace Havtorn
 
 		void EndFrame()
 		{
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.f); // Disable round borders
+			ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.f); // Disable borders
+			ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.10f, 0.10f, 0.10f, 1.00f)); // Background color
+			ImGui::RenderNotifications();
+			ImGui::PopStyleVar(2);
+			ImGui::PopStyleColor(1);
+
 			ImGui::Render();
 			ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 		}
@@ -171,6 +193,30 @@ namespace Havtorn
 		void SetTooltip(const char* fmt, va_list args)
 		{
 			ImGui::SetTooltipV(fmt, args);
+		}
+
+		void PushNotification(const EGUIToastNotificationType type, const I32 durationMS, const char* fmt, va_list args)
+		{
+			ImGuiToastType imguiType = ImGuiToastType::None;
+			switch (type)
+			{
+				case EGUIToastNotificationType::Success:
+					imguiType = ImGuiToastType::Success;
+					break;
+				case EGUIToastNotificationType::Warning:
+					imguiType = ImGuiToastType::Warning;
+					break;
+				case EGUIToastNotificationType::Error:
+					imguiType = ImGuiToastType::Error;
+					break;
+				case EGUIToastNotificationType::Info:
+					imguiType = ImGuiToastType::Info;
+					break;
+			}
+
+			ImGuiToast toast = { imguiType, durationMS };
+			toast.setContent(fmt, args);
+			ImGui::InsertNotification(toast);
 		}
 
 		SVector2<F32> CalculateTextSize(const char* text)
@@ -748,6 +794,13 @@ namespace Havtorn
 			ImGui::SetNextWindowSize(imSize);
 		}
 
+		void SetNextWindowSizeConstraints(const SVector2<F32>& sizeMin, const SVector2<F32>& sizeMax)
+		{
+			ImVec2 imSizeMin = { sizeMin.X, sizeMin.Y };
+			ImVec2 imSizeMax = { sizeMax.X, sizeMax.Y };
+			ImGui::SetNextWindowSizeConstraints(imSizeMin, imSizeMax);
+		}
+
 		void SetWindowPos(const char* label, const SVector2<F32>& pos)
 		{
 			ImVec2 imPos = { pos.X, pos.Y };
@@ -910,7 +963,7 @@ namespace Havtorn
 
 		bool SetDragDropPayload(const char* type, const void* data, U64 dataSize)
 		{
-			return ImGui::SetDragDropPayload(type, data, dataSize);
+			return ImGui::SetDragDropPayload(type, data, dataSize, ImGuiCond_Once);
 		}
 
 		void EndDragDropSource()
@@ -1304,7 +1357,7 @@ namespace Havtorn
 
 		void SetNodePosition(const U64 id, const SVector2<F32>& position)
 		{
-			NE::SetNodePosition(id, { position.X, position.Y });
+			NE::SetNodePosition(id, NE::ScreenToCanvas({ position.X, position.Y }));
 		}
 
 		SVector2<F32> GetNodePosition(const U64 id)
@@ -1620,6 +1673,14 @@ namespace Havtorn
 		va_list args;
 		va_start(args, fmt);
 		Instance->Impl->SetTooltip(fmt, args);
+		va_end(args);
+	}
+
+	void GUI::PushNotification(const EGUIToastNotificationType type, const I32 durationMS, const char* fmt, ...)
+	{
+		va_list args;
+		va_start(args, fmt);
+		Instance->Impl->PushNotification(type, durationMS, fmt, args);
 		va_end(args);
 	}
 
@@ -1965,266 +2026,6 @@ namespace Havtorn
 		}
 	}
 
-	SAssetPickResult GUI::AssetPicker(const char* label, const char* modalLabel, intptr_t image, const std::string& directory, I32 columns, const DirEntryFunc& assetInspector, const SVector2<F32>& pickerSize)
-	{
-		if (GUI::ImageButton("AssetPicker", image, pickerSize))
-		{
-			GUI::OpenPopup(modalLabel);
-			GUI::SetNextWindowPos(GUI::GetViewportCenter(), EWindowCondition::Appearing, SVector2<F32>(0.5f, 0.5f));
-		}
-
-		GUI::Text(label);
-
-		if (!GUI::BeginPopupModal(modalLabel, NULL, { EWindowFlag::AlwaysAutoResize }))
-			return SAssetPickResult();
-
-		if (!GUI::BeginTable("AssetPickerTable", columns))
-		{
-			GUI::EndPopup();
-			return SAssetPickResult();
-		}
-		
-		I32 id = 0;
-		for (auto& entry : std::filesystem::recursive_directory_iterator(directory))
-		{
-			if (entry.is_directory())
-				continue;
-
-			SAssetInspectionData data = assetInspector(entry);
-			if (!data.IsValid())
-				continue;
-
-			GUI::TableNextColumn();
-			GUI::PushID(id++);
-
-			if (GUI::ImageButton(data.Name.c_str(), data.TextureRef, { GUI::TexturePreviewSizeX * 0.75f, GUI::TexturePreviewSizeY * 0.75f }))
-			{
-				GUI::PopID();
-				GUI::EndTable();
-				GUI::CloseCurrentPopup();
-				GUI::EndPopup();
-				return SAssetPickResult(entry);
-			}
-
-			GUI::Text(data.Name.c_str());
-			GUI::PopID();
-		}
-
-		GUI::EndTable();
-
-		// TODO.NW: Make util for centering elements. Look at AssetBrowserWindow for full implementation
-		// Center buttons
-		F32 width = 0.0f;
-		width += GUI::CalculateTextSize("Cancel").X + GUI::ThumbnailPadding;
-		F32 avail = GUI::GetContentRegionAvail().X;
-		F32 off = (avail - width) * 0.5f;
-		GUI::OffsetCursorPos(SVector2<F32>(off, 0.0f));
-
-		if (GUI::Button("Cancel"))
-		{
-			GUI::CloseCurrentPopup();
-			GUI::EndPopup();
-			return SAssetPickResult(EAssetPickerState::Cancelled);
-		}
-
-		GUI::EndPopup();
-		return SAssetPickResult(EAssetPickerState::Active);
-	}
-
-	SAssetPickResult GUI::AssetPickerFilter(const char* label, const char* modalLabel, intptr_t image, const std::string& directory, I32 columns, const DirEntryEAssetTypeFunc& assetInspector, EAssetType filterByAssetType, const SVector2<F32>& pickerSize)
-	{
-		SAssetPickResult result;
-
-		if (GUI::ImageButton("AssetPicker", image, pickerSize))
-		{
-			GUI::OpenPopup(modalLabel);
-			GUI::SetNextWindowPos(GUI::GetViewportCenter(), EWindowCondition::Appearing, SVector2<F32>(0.5f, 0.5f));
-		}
-		result.IsHovered = GUI::IsMouseInRect(GUI::GetLastRect());
-
-		if (GUI::IsItemClicked(EGUIMouseButton::Right))
-		{
-			result.State = EAssetPickerState::ContextMenu;
-			return result;
-		}
-
-		const F32 thumbnailPadding = 8.0f;
-		const F32 cellWidth = GUI::TexturePreviewSizeX * 0.75f + thumbnailPadding;
-		GUI::OffsetCursorPos(SVector2<F32>(1.0f, -4.0f));
-		GUI::AddRectFilled(GUI::GetCursorScreenPos(), SVector2<F32>(cellWidth, 2.0f), GetAssetTypeColor(filterByAssetType));
-
-		GUI::OffsetCursorPos(SVector2<F32>(0.0f, 6.0f));
-		GUI::Text(label);
-
-		if (!GUI::BeginPopupModal(modalLabel, NULL, { EWindowFlag::AlwaysAutoResize }))
-			return result;
-
-		if (!GUI::BeginTable("AssetPickerTable", columns))
-		{
-			GUI::EndPopup();
-			return result;
-		}
-
-		I32 id = 0;
-		for (auto& entry : std::filesystem::recursive_directory_iterator(directory))
-		{
-			if (entry.is_directory())
-				continue;
-
-			SAssetInspectionData data = assetInspector(entry, static_cast<EAssetType>(filterByAssetType));
-			if (!data.IsValid())
-				continue;
-
-			GUI::TableNextColumn();
-			GUI::PushID(id++);
-
-			if (GUI::ImageButton(data.Name.c_str(), data.TextureRef, { GUI::TexturePreviewSizeX * 0.75f, GUI::TexturePreviewSizeY * 0.75f }))
-			{
-				GUI::PopID();
-				GUI::EndTable();
-				GUI::CloseCurrentPopup();
-				GUI::EndPopup();
-				result.State = EAssetPickerState::AssetPicked;
-				result.PickedEntry = entry;
-				return result;
-			}
-
-			GUI::Text(data.Name.c_str());
-			GUI::PopID();
-		}
-
-		GUI::EndTable();
-
-		// TODO.NW: Make util for centering elements. Look at AssetBrowserWindow for full implementation
-		// Center buttons
-		F32 width = 0.0f;
-		width += GUI::CalculateTextSize("Cancel").X + GUI::ThumbnailPadding;
-		F32 avail = GUI::GetContentRegionAvail().X;
-		F32 off = (avail - width) * 0.5f;
-		GUI::OffsetCursorPos(SVector2<F32>(off, 0.0f));
-
-		if (GUI::Button("Cancel"))
-		{
-			GUI::CloseCurrentPopup();
-			GUI::EndPopup();
-			return SAssetPickResult(EAssetPickerState::Cancelled);
-		}
-
-		GUI::EndPopup();
-		result.State = EAssetPickerState::Active;
-		return result;
-	}
-
-	SAssetPickResult GUI::AssetPickerDropdownFilter(const char* label, const char* assetDetailLabel, intptr_t image, intptr_t sourceButtonImage, intptr_t findButtonImage, const std::string& directory, I32 columns, const DirEntryEAssetTypeFunc& assetInspector, EAssetType assetType, const SVector2<F32>& pickerSize)
-	{
-		SAssetPickResult result;
-
-		GUI::Image(image, pickerSize, SVector2<F32>(0.0f), SVector2<F32>(1.0f), SColor::White, SColor::Black);
-		result.IsHovered = GUI::IsMouseInRect(GUI::GetLastRect());
-
-		if (GUI::IsItemClicked(EGUIMouseButton::Right))
-		{
-			result.State = EAssetPickerState::ContextMenu;
-			return result;
-		}
-
-		constexpr F32 thumbnailPadding = 8.0f;
-		const F32 cellWidth = pickerSize.X * 0.85f + thumbnailPadding;
-		GUI::OffsetCursorPos(SVector2<F32>(1.0f, -4.0f));
-		GUI::AddRectFilled(GUI::GetCursorScreenPos(), SVector2<F32>(cellWidth, 2.0f), GetAssetTypeColor(assetType));
-		GUI::OffsetCursorPos(SVector2<F32>(0.0f, 6.0f));
-
-		// TODO.NW: Figure out the sizing of these elements. The child holding the combo and text under it makes it so that the combo arrow doesn't get displayed when minimized.
-		SVector2<F32> contentRegionAvail = GUI::GetContentRegionAvail() - SVector2<F32>(cellWidth, 0.0f);
-		GUI::SameLine();
-		constexpr F32 maxWidth = 0.0f;
-		constexpr F32 maxDropDownSize = 200.0f; // Max vertical size of the combo popup box.
-		{ // Details next to image
-			//ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(-FLT_MIN, maxDropDownSize));
-			GUI::BeginChild("Details", SVector2<F32>(maxWidth, 0.0f), { EChildFlag::AutoResizeY, EChildFlag::AlwaysAutoResize });
-
-			// NW: Need this to keep the search bar floating and without scrolling between filter and options child
-			ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, FLT_MAX));
-			if (GUI::BeginCombo("##", label))
-			{
-				result.State = EAssetPickerState::Active;
-
-				SGuiTextFilter filter = SGuiTextFilter();
-				filter.Draw("Search", 0); // TODO.NW: Figure out a nicer way of setting the width
-
-				ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, maxDropDownSize));
-				if (GUI::BeginChild("##ComboOptionsChild", SVector2<F32>(maxWidth, 0.0f), { EChildFlag::AutoResizeY, EChildFlag::AlwaysAutoResize }))
-				{
-					I32 id = 0;
-					for (auto& entry : std::filesystem::recursive_directory_iterator(directory))
-					{
-						if (entry.is_directory())
-							continue;
-
-						SAssetInspectionData data = assetInspector(entry, static_cast<EAssetType>(assetType));
-						if (!data.IsValid())
-							continue;
-
-						if (!filter.PassFilter(data.Name.c_str()))
-							continue;
-
-						GUI::PushID(id++);
-
-						if (GUI::ImageButton("", data.TextureRef, { GUI::TexturePreviewSizeX * 0.5f, GUI::TexturePreviewSizeY * 0.5f }))
-						{
-							// TODO.NW: Make combo close when selecting the same asset again
-							GUI::PopID();
-							GUI::EndChild();
-							GUI::EndCombo();
-							GUI::EndChild();
-							GUI::CloseCurrentPopup();
-							result.State = EAssetPickerState::AssetPicked;
-							result.PickedEntry = entry;
-							return result;
-						}
-
-						GUI::SameLine();
-						GUI::Text(data.Name.c_str());
-						GUI::PopID();
-					}
-				}
-
-				GUI::EndChild();
-				GUI::EndCombo();
-			}
-
-			GUI::OffsetCursorPos(SVector2<F32>(2.0f, -2.5f));
-			GUI::SetSecondaryFontActive(true);
-			GUI::TextDisabled(assetDetailLabel);
-			GUI::SetSecondaryFontActive(false);
-
-			GUI::OffsetCursorPos(SVector2<F32>(0.0f, -2.5f));
-			GUI::PushID("GetSelectedButton");
-			if (GUI::ImageButton("##", sourceButtonImage, SVector2<F32>(12.0f, 14.0f)))
-			{
-				result.State = EAssetPickerState::GetFromSelected;
-			}
-			if (GUI::IsItemHovered())
-				GUI::SetTooltip("Use Selected Asset from Asset Browser");
-			GUI::PopID();
-
-			GUI::SameLine();
-			GUI::OffsetCursorPos(SVector2<F32>(-2.0f, 0.0f));
-			GUI::PushID("BrowseToAssetButton");
-			if (GUI::ImageButton("##", findButtonImage, SVector2<F32>(12.0f, 14.0f)))
-			{
-				result.State = EAssetPickerState::FindInBrowser;
-			}
-			if (GUI::IsItemHovered())
-				GUI::SetTooltip("Browse to Asset in Asset Browser");
-			GUI::PopID();
-
-			GUI::EndChild();
-		}
-
-		return result;
-	}
-
 	void VisitTagNode(Ref<STagNode>& node, SGameplayTagContainer& activeTags, SGameplayTag& clickedTag, const SGuiTextFilter& searchFilter)
 	{
 		if (searchFilter.IsActive() && !searchFilter.PassFilter(node->Tag.Name.c_str()))
@@ -2338,95 +2139,6 @@ namespace Havtorn
 			GUI::EndChild();
 		}
 		GUI::PopID();
-	}
-
-	SRenderAssetCardResult GUI::RenderAssetCard(const char* label, const bool isSelected, const bool isBeingNamed, const intptr_t& thumbnailID, const char* typeName, const SColor& color, const SColor& borderColor, void* dragDropPayloadToSet, U64 payLoadSize)
-	{
-		SRenderAssetCardResult result;
-
-		SVector2<F32> cardStartPos = GUI::GetCursorPos();
-		SVector2<F32> framePadding = GUI::GetStyleVar(EStyleVar::FramePadding);
-
-		SVector2<F32> cardSize = { GUI::ThumbnailSizeX + framePadding.X * 0.5f, GUI::ThumbnailSizeY + framePadding.Y * 0.5f };
-		cardSize.Y *= 1.6f;
-		SVector2<F32> thumbnailSize = { GUI::ThumbnailSizeX + framePadding.X * 0.5f, GUI::ThumbnailSizeY + framePadding.Y * 0.5f + 4.0f };
-
-		// TODO.NW: Can't seem to get the leftmost line to show correctly. Maybe need to start the table as usual and then offset inwards?
-		constexpr F32 borderThickness = 1.0f;
-		GUI::SetCursorPos(cardStartPos + SVector2<F32>(-1.0f * borderThickness));
-		GUI::AddRectFilled(GUI::GetCursorScreenPos(), cardSize + SVector2<F32>(2.0f * borderThickness), borderColor);
-		GUI::SetCursorPos(cardStartPos);
-		GUI::AddRectFilled(GUI::GetCursorScreenPos(), cardSize, SColor(65));
-		GUI::SetCursorPos(cardStartPos);
-		GUI::AddRectFilled(GUI::GetCursorScreenPos(), thumbnailSize, SColor(40));
-		GUI::SetCursorPos(cardStartPos);
-
-		if (GUI::Selectable("", isSelected, { ESelectableFlag::AllowDoubleClick, ESelectableFlag::AllowOverlap }, cardSize))
-		{
-			if (GUI::IsMouseReleased())
-				result.IsClicked = true;
-			if (GUI::IsDoubleClick())
-				result.IsDoubleClicked = true;
-		}
-
-		if (GUI::BeginDragDropSource())
-		{
-			SGuiPayload payload = GUI::GetDragDropPayload();
-			if (payload.Data == nullptr)
-			{
-				GUI::SetDragDropPayload("AssetDrag", dragDropPayloadToSet, payLoadSize);
-			}
-			GUI::Text(label);
-
-			GUI::EndDragDropSource();
-		}
-
-		GUI::SetCursorPos(cardStartPos + SVector2<F32>(1.0f, 0.0f));
-		GUI::Image(thumbnailID, { GUI::ThumbnailSizeX, GUI::ThumbnailSizeY }, SVector2<F32>(0.0f), SVector2<F32>(1.0f), SColor::White);
-
-		SColor detailColor = color;
-		detailColor.A = SColor::ToU8Range(0.5f);
-		GUI::AddRectFilled(GUI::GetCursorScreenPos(), SVector2<F32>(cardSize.X, 2.0f), detailColor);
-
-		GUI::OffsetCursorPos(SVector2<F32>(2.0f, 4.0f));
-
-		if (GUI::IsItemHovered())
-		{
-			result.IsHovered = true;
-		}
-
-		GUI::PushClipRect(GetCursorScreenPos(), cardSize - framePadding);
-		
-		if (isBeingNamed)
-		{
-			GUI::SetKeyboardFocusHere();
-
-			std::string newAssetName = label;
-			GUI::PushID(label);
-			if (GUI::InputText("", newAssetName))
-			{
-				if (GUI::IsItemDeactivatedAfterEdit())
-					result.NewAssetName = newAssetName;
-			}
-
-			if (GUI::IsItemDeactivated() && !result.NewAssetName.has_value())
-				result.NewAssetName = label;
-
-			GUI::PopID();
-		}
-		else
-			GUI::Text(label);
-		
-		if (GUI::IsItemHovered())
-			GUI::SetTooltip(label);
-
-		GUI::OffsetCursorPos(SVector2<F32>(2.0f, -2.0f));
-		GUI::SetSecondaryFontActive(true);
-		GUI::TextDisabled(typeName);
-		GUI::SetSecondaryFontActive(false);
-		GUI::PopClipRect();
-
-		return result;
 	}
 
 	bool GUI::Selectable(const char* label, const bool selected, const std::vector<ESelectableFlag>& flags, const SVector2<F32>& size)
@@ -2806,6 +2518,11 @@ namespace Havtorn
 		Instance->Impl->SetNextWindowSize(size);
 	}
 
+	void GUI::SetNextWindowSizeConstraints(const SVector2<F32>& sizeMin, const SVector2<F32>& sizeMax)
+	{
+		Instance->Impl->SetNextWindowSizeConstraints(sizeMin, sizeMax);
+	}
+
 	void GUI::SetWindowPos(const char* label, const SVector2<F32>& pos)
 	{
 		Instance->Impl->SetWindowPos(label, pos);
@@ -3034,6 +2751,7 @@ namespace Havtorn
 	void GUI::CopyToClipboard(const char* text)
 	{
 		Instance->Impl->CopyToClipboard(text);
+		GUI::PushNotification(EGUIToastNotificationType::Success, 3000, "Successfully copied to clipboard!");
 	}
 
 	std::string GUI::CopyFromClipboard()

@@ -11,6 +11,12 @@
 
 #include "EditHistory.h"
 #include "EditorDeepLinkParser.h"
+#include "ComponentView.h"
+
+#include "NodeView.h"
+#include "NodeViews/CoreNodeViews.h"
+
+#include <HexRune/HexRune.h>
 
 namespace Havtorn
 {
@@ -96,13 +102,82 @@ namespace Havtorn
 		EEditorColorTheme PauseColorTheme = EEditorColorTheme::HavtornDefault;
 	};
 
+	struct SAssetInspectionData
+	{
+		SAssetInspectionData(const std::string& name, const intptr_t textureRef)
+			: Name(name)
+			, TextureRef(textureRef)
+			, AssetPath()
+		{
+		}
+
+		SAssetInspectionData(const std::string& name, const intptr_t textureRef, const std::string& assetPath)
+			: Name(name)
+			, TextureRef(textureRef)
+			, AssetPath(assetPath)
+		{
+		}
+
+		bool IsValid() const
+		{
+			return Name.size() > 0 && AssetPath.size() > 0 && TextureRef != 0;
+		}
+
+		std::string Name = "";
+		std::string AssetPath = ""; //TODO.AS Replace with AssetRegistry GUID later on
+		intptr_t TextureRef = 0;
+	};
+
+	using DirEntryFunc = const std::function<SAssetInspectionData(std::filesystem::directory_entry)>;
+	using DirEntryEAssetTypeFunc = const std::function<SAssetInspectionData(std::filesystem::directory_entry, const EAssetType assetTypeFilter)>;
+
+	enum class EAssetPickerState
+	{
+		Inactive,
+		Active,
+		AssetPicked,
+		Cancelled,
+		ContextMenu,
+		GetFromSelected,
+		FindInBrowser
+	};
+
+	struct SAssetPickResult
+	{
+		SAssetPickResult() = default;
+		SAssetPickResult(EAssetPickerState state)
+			: State(state)
+		{
+		}
+		SAssetPickResult(const std::filesystem::directory_entry& entry)
+			: State(EAssetPickerState::AssetPicked)
+			, PickedEntry(entry)
+		{
+		}
+		EAssetPickerState State = EAssetPickerState::Inactive;
+		std::filesystem::directory_entry PickedEntry;
+		bool IsHovered = false;
+	};
+
+	template<typename T>
+	concept ComponentViewType = std::derived_from<T, SComponentView>;
+
+	template<typename T>
+	concept ComponentType = std::derived_from<T, SComponent>;
+
+	template<typename T>
+	concept NodeViewType = std::derived_from<T, SNodeView>;
+
+	template<typename T>
+	concept NodeType = std::derived_from<T, HexRune::SNode>;
+
 	class CEditorManager
 	{
 	public:
 		EDITOR_API CEditorManager();
 		EDITOR_API ~CEditorManager();
 
-		bool EDITOR_API Init(CPlatformManager* platformManager, CRenderManager* renderManager);
+		virtual bool EDITOR_API Init(CPlatformManager* platformManager, CRenderManager* renderManager);
 		void EDITOR_API BeginFrame();
 		void EDITOR_API Render();
 		void EDITOR_API EndFrame();
@@ -113,6 +188,15 @@ namespace Havtorn
 		CScene* GetCurrentWorkingScene() const;
 		std::vector<Ptr<CScene>>& GetScenes() const;
 		CScene* GetContainingScene(const SEntity& entity) const;
+
+		const std::map<U64, Ptr<SComponentView>>& GetComponentViewsMap() const;
+		const std::vector<Ptr<SComponentView>>& GetComponentViewsVector() const;
+		const std::vector<U64> GetComponentDependencies(const U64 componentRuntimeHash) const;
+
+		const std::unordered_map<U64, Ptr<SNodeView>>& GetNodeViewsMap() const;
+		const std::vector<Ptr<SNodeView>>& GetNodeViewsVector() const;
+
+		void ClearSelections();
 
 		void SetSelectedEntity(const SEntity& entity);
 		void AddSelectedEntity(const SEntity& entity);
@@ -153,7 +237,8 @@ namespace Havtorn
 		const Ptr<SEditorAssetRepresentation>& GetAssetRepFromDirEntry(const std::filesystem::directory_entry& dirEntry) const;
 		const Ptr<SEditorAssetRepresentation>& GetAssetRepFromName(const std::string& assetName) const;
 		const intptr_t GetTextureResourceFromAssetRep(SEditorAssetRepresentation* assetRepresentation) const;
-		DirEntryFunc GetAssetInspectFunction() const;
+
+		SAssetPickResult AssetPickerDropdown(const char* label, const EAssetType assetType, SEditorAssetRepresentation* existingAssetRep, const SVector2<F32>& pickerSize = SVector2<F32>(48.0f));
 		DirEntryEAssetTypeFunc GetAssetFilteredInspectFunction() const;
 
 		void CreateAssetRep(const std::filesystem::path& destinationPath);
@@ -216,6 +301,105 @@ namespace Havtorn
 		[[nodiscard]] std::string_view GetProjectName() const;
 
 		static std::string PreviewMaterial;
+	
+		template<typename TNodeView, typename TNode>
+		void RegisterDataBindingNodeView(HexRune::SScript* script, U64 dataBindingID)
+		{
+			const U64 runtimeNodeTypeHash = typeid(TNode).hash_code() + dataBindingID;
+			if (RegisteredNodeViewsMap.contains(runtimeNodeTypeHash))
+				return;
+
+			RegisteredNodeViewsMap.emplace(runtimeNodeTypeHash, std::make_unique<TNodeView>(script, dataBindingID));
+			RegisteredNodeViewsMap.at(runtimeNodeTypeHash)->RuntimeHash = runtimeNodeTypeHash;
+
+			RegisteredNodeViewsVector.emplace_back(std::make_unique<TNodeView>(script, dataBindingID));
+			RegisteredNodeViewsVector.back()->RuntimeHash = runtimeNodeTypeHash;
+			std::sort(RegisteredNodeViewsVector.begin(), RegisteredNodeViewsVector.end(), [](const Ptr<SNodeView>& a, const Ptr<SNodeView>& b) { return a->GetSortingPriority() < b->GetSortingPriority(); });
+		}
+
+		template<typename TNodeView, typename TNode>
+		void RemoveDataBindingNodeView(U64 dataBindingID)
+		{
+			const U64 runtimeNodeTypeHash = typeid(TNode).hash_code() + dataBindingID;
+			if (!RegisteredNodeViewsMap.contains(runtimeNodeTypeHash))
+				return;
+
+			std::erase_if(RegisteredNodeViewsMap, [dataBindingID](const auto& mapItem)
+				{
+					auto const& [hash, view] = mapItem;
+
+					HexRune::SDataBindingGetNodeView* getterContext = dynamic_cast<HexRune::SDataBindingGetNodeView*>(view.get());
+					if (getterContext != nullptr)
+						return getterContext->DataBindingID == dataBindingID;
+
+					HexRune::SDataBindingSetNodeView* setterContext = dynamic_cast<HexRune::SDataBindingSetNodeView*>(view.get());
+					if (setterContext != nullptr)
+						return setterContext->DataBindingID == dataBindingID;
+
+					return false;
+				});
+
+			std::erase_if(RegisteredNodeViewsVector, [dataBindingID](const Ptr<SNodeView>& view)
+				{
+					HexRune::SDataBindingGetNodeView* getterContext = dynamic_cast<HexRune::SDataBindingGetNodeView*>(view.get());
+					if (getterContext != nullptr)
+						return getterContext->DataBindingID == dataBindingID;
+
+					HexRune::SDataBindingSetNodeView* setterContext = dynamic_cast<HexRune::SDataBindingSetNodeView*>(view.get());
+					if (setterContext != nullptr)
+						return setterContext->DataBindingID == dataBindingID;
+
+					return false;
+				});
+		}
+
+		static SDragDropStruct<HexRune::SScriptDataBinding> DataBindingDragData;
+		static SDragDropStruct<SEditorAssetRepresentation> AssetDragData;
+		static SDragDropStruct<SEntity> EntityDragData;
+
+	protected:
+		template<ComponentViewType TComponentView, ComponentType TComponent>
+		void RegisterComponentView()
+		{
+			const U64 runtimeComponentTypeHash = typeid(TComponent).hash_code();
+			if (RegisteredComponentViewsMap.contains(runtimeComponentTypeHash))
+				return;
+
+			RegisteredComponentViewsMap.emplace(runtimeComponentTypeHash, std::make_unique<TComponentView>());
+			RegisteredComponentViewsMap.at(runtimeComponentTypeHash)->Manager = this;
+			RegisteredComponentViewsMap.at(runtimeComponentTypeHash)->RuntimeHash = runtimeComponentTypeHash;
+
+			RegisteredComponentViewsVector.emplace_back(std::make_unique<TComponentView>());
+			RegisteredComponentViewsVector.back()->Manager = this;
+			RegisteredComponentViewsVector.back()->RuntimeHash = runtimeComponentTypeHash;
+			std::sort(RegisteredComponentViewsVector.begin(), RegisteredComponentViewsVector.end(), [](const Ptr<SComponentView>& a, const Ptr<SComponentView>& b) { return a->GetSortingPriority() < b->GetSortingPriority(); });
+		}
+
+		template<ComponentType TComponent, ComponentType... TComponents>
+		void SetupComponentDependencies()
+		{
+			const U64 runtimeComponentTypeHash = typeid(TComponent).hash_code();
+			if (!ComponentDependencies.contains(runtimeComponentTypeHash))
+				ComponentDependencies.emplace(runtimeComponentTypeHash, std::vector<U64>{});
+
+			std::vector<U64>& dependencies = ComponentDependencies.at(runtimeComponentTypeHash);
+			([&dependencies] { dependencies.push_back(typeid(TComponents).hash_code()); } (), ...);
+		}
+
+		template<NodeViewType TNodeView, NodeType TNode>
+		void RegisterNodeView()
+		{
+			const U64 runtimeNodeTypeHash = typeid(TNode).hash_code();
+			if (RegisteredNodeViewsMap.contains(runtimeNodeTypeHash))
+				return;
+
+			RegisteredNodeViewsMap.emplace(runtimeNodeTypeHash, std::make_unique<TNodeView>());
+			RegisteredNodeViewsMap.at(runtimeNodeTypeHash)->RuntimeHash = runtimeNodeTypeHash;
+
+			RegisteredNodeViewsVector.emplace_back(std::make_unique<TNodeView>());
+			RegisteredNodeViewsVector.back()->RuntimeHash = runtimeNodeTypeHash;
+			std::sort(RegisteredNodeViewsVector.begin(), RegisteredNodeViewsVector.end(), [](const Ptr<SNodeView>& a, const Ptr<SNodeView>& b) { return a->GetSortingPriority() < b->GetSortingPriority(); });
+		}	
 
 	private:
 		void InitEditorLayout(); 
@@ -232,9 +416,11 @@ namespace Havtorn
 		void OnDragCopyEvent(const SInputActionPayload payload);
 		void OnEditorActionTreeEvent(const SInputActionPayload payload);
 		void OnPlayStateEvent(const SInputActionPayload payload);
+		void OnToggleCursor(const SInputActionPayload payload);
 		void OnPivotMoving(const SInputActionPayload payload);
 		void OnVertexSnapping(const SInputActionPayload payload);
 		void OnGridSnapping(const SInputActionPayload payload);
+		void OnClearSelection(const SInputActionPayload payload);
 
 		void OnResolutionChanged(SVector2<U16> newResolution);
 		void OnBeginPlay(std::vector<Ptr<CScene>>& scenes);
@@ -256,6 +442,15 @@ namespace Havtorn
 		// I see no reason currently we shouldn't minimize usage of this, for the benefit of working in a multi-scene workflow with a bunch of open "containers".
 		CScene* CurrentWorkingScene = nullptr;
 		
+		// Components
+		std::map<U64, Ptr<SComponentView>> RegisteredComponentViewsMap;
+		std::vector<Ptr<SComponentView>> RegisteredComponentViewsVector;
+		std::map<U64, std::vector<U64>> ComponentDependencies;
+
+		// Nodes
+		std::unordered_map<U64, Ptr<SNodeView>> RegisteredNodeViewsMap;
+		std::vector<Ptr<SNodeView>> RegisteredNodeViewsVector;
+
 		std::vector<SEntity> SelectedEntities = {};
 
 		CEditHistory EditHistory;
@@ -267,6 +462,8 @@ namespace Havtorn
 		
 		std::vector<SEditorAssetRepresentation*> SelectedAssets = {};
 		std::optional<std::filesystem::directory_entry> SelectedFolder;
+
+		SGuiTextFilter AssetFilter = SGuiTextFilter();
 
 		// TODO.NR: Save these in .ini file
 		SEditorLayout EditorLayout;
@@ -297,10 +494,8 @@ namespace Havtorn
 
 		std::string EntityCopyBuffer;
 
-		inline static const std::string DefaultEditorSettingsPath =
-		"Config/EditorPreferences.json";
-		inline static const std::string UserEditorSettingsPath =
-		"Config/EditorPreferences.user.json";
+		inline static const std::string DefaultEditorSettingsPath = "Config/EditorPreferences.json";
+		inline static const std::string UserEditorSettingsPath = "Config/EditorPreferences.user.json";
 
 		std::string ProjectName = "Project Name";
 		

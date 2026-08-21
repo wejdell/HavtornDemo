@@ -21,10 +21,10 @@ namespace Havtorn
 	{
 		HexRune::SScript::Init();
 
-		NodeFactory->RegisterNodeType<HexRune::SGhostyNode, HexRune::SGhostyNodeEditorContext>(this, 100010);
-		NodeFactory->RegisterNodeType<HexRune::SGhostyPositionNode, HexRune::SGhostyNodePositionEditorContex>(this, 100020);
-		NodeFactory->RegisterNodeType<HexRune::SInterpolatePosition, HexRune::SInterpolatePositionNodeEditorContext>(this, 100030);
-		NodeFactory->RegisterNodeType<HexRune::STimerNode, HexRune::STimerNodeEditorContext>(this, 100040);
-		NodeFactory->RegisterNodeType<HexRune::SSetPositionNode, HexRune::SSetPositionNodeEditorContext>(this, 100050);
+		NodeFactory->RegisterNodeType<HexRune::SGhostyNode>(100010);
+		NodeFactory->RegisterNodeType<HexRune::SGhostyPositionNode>(100020);
+		NodeFactory->RegisterNodeType<HexRune::SInterpolatePosition>(100030);
+		NodeFactory->RegisterNodeType<HexRune::STimerNode>(100040);
+		NodeFactory->RegisterNodeType<HexRune::SSetPositionNode>(100050);
 	}
 }

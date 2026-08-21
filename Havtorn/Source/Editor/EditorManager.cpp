@@ -20,6 +20,14 @@
 #include "EditorToggleable.h"
 #include "EditorToggleables.h"
 
+#include "ComponentViewInclude.h"
+
+#include "NodeViews/CoreNodeViews.h"
+#include "NodeViews/ECSNodeViews.h"
+
+#include <HexRune/CoreNodes/CoreNodes.h>
+#include <HexRune/ECSNodes/ECSNodes.h>
+
 #include "EditActions/RemoveEntityEditAction.h"
 
 #include "Systems/EditorRenderSystem.h"
@@ -36,6 +44,9 @@
 namespace Havtorn
 {
 	std::string CEditorManager::PreviewMaterial = "Resources/M_MeshPreview.hva";
+	SDragDropStruct<HexRune::SScriptDataBinding> CEditorManager::DataBindingDragData = SDragDropStruct<HexRune::SScriptDataBinding>("DataBindingDrag");
+	SDragDropStruct<SEditorAssetRepresentation> CEditorManager::AssetDragData = SDragDropStruct<SEditorAssetRepresentation>("AssetDrag");
+	SDragDropStruct<SEntity> CEditorManager::EntityDragData = SDragDropStruct<SEntity>("EntityDrag");
 
 	CEditorManager::CEditorManager()
 		: EditHistory(CEditHistory(this))
@@ -51,6 +62,7 @@ namespace Havtorn
 		mapper->GetActionDelegate(EInputActionEvent::ToggleFullscreen).AddMember(this, &CEditorManager::OnToggleFullscreen);
 		mapper->GetActionDelegate(EInputActionEvent::StartPlay).AddMember(this, &CEditorManager::OnPlayStateEvent);
 		mapper->GetActionDelegate(EInputActionEvent::StopPlay).AddMember(this, &CEditorManager::OnPlayStateEvent);
+		mapper->GetActionDelegate(EInputActionEvent::ToggleCursor).AddMember(this, &CEditorManager::OnToggleCursor);
 		mapper->GetActionDelegate(EInputActionEvent::AltPress).AddMember(this, &CEditorManager::OnDragCopyEvent);
 		mapper->GetActionDelegate(EInputActionEvent::AltRelease).AddMember(this, &CEditorManager::OnDragCopyEvent);
 		mapper->GetActionDelegate(EInputActionEvent::Copy).AddMember(this, &CEditorManager::OnCopyEvent);
@@ -60,6 +72,7 @@ namespace Havtorn
 		mapper->GetActionDelegate(EInputActionEvent::MovePivot).AddMember(this, &CEditorManager::OnPivotMoving);
 		mapper->GetActionDelegate(EInputActionEvent::VertexSnapping).AddMember(this, &CEditorManager::OnVertexSnapping);
 		mapper->GetActionDelegate(EInputActionEvent::GridSnapping).AddMember(this, &CEditorManager::OnGridSnapping);
+		mapper->GetActionDelegate(EInputActionEvent::ClearSelection).AddMember(this, &CEditorManager::OnClearSelection);
 
 		const CJsonDocument document = UFileSystem::OpenJson(UFileSystem::EngineConfig);
 		ProjectName = document.Get("Game Name", "Project Name");
@@ -80,6 +93,7 @@ namespace Havtorn
 		mapper->GetActionDelegate(EInputActionEvent::ToggleFullscreen).RemoveObject(this);
 		mapper->GetActionDelegate(EInputActionEvent::StartPlay).RemoveObject(this);
 		mapper->GetActionDelegate(EInputActionEvent::StopPlay).RemoveObject(this);
+		mapper->GetActionDelegate(EInputActionEvent::ToggleCursor).RemoveObject(this);
 		mapper->GetActionDelegate(EInputActionEvent::AltPress).RemoveObject(this);
 		mapper->GetActionDelegate(EInputActionEvent::AltRelease).RemoveObject(this);
 		mapper->GetActionDelegate(EInputActionEvent::Copy).RemoveObject(this);
@@ -106,11 +120,17 @@ namespace Havtorn
 		MenuElements.emplace_back(std::make_unique<CWindowMenu>("Window", this));
 		MenuElements.emplace_back(std::make_unique<CHelpMenu>("Help", this));
 
-		Windows.emplace_back(std::make_unique<CViewportWindow>("Viewport", this));
+		Windows.emplace_back(std::make_unique<CHierarchyWindow>("Hierarchy", this));
 		Windows.emplace_back(std::make_unique<CDockSpaceWindow>("Dock Space", this));
 		Windows.emplace_back(std::make_unique<CAssetBrowserWindow>("Asset Browser", this));
 		Windows.emplace_back(std::make_unique<COutputLogWindow>("Output Log", this));
-		Windows.emplace_back(std::make_unique<CHierarchyWindow>("Hierarchy", this));
+		
+		// NW: The Viewport and conditionally inspector and prefab editors make use of render targets 
+		// from the scene. If these are submitted to ImGui and then the underlying memory is destroyed 
+		// by e.g. the Hierarchy, ImGui will crash when rendering. But it does seem isolated to when the
+		// viewport renders by itself. We move the hierarchy up in initialization order to let it work 
+		// on the engine memory before ui work submission for this reason in any case.
+		Windows.emplace_back(std::make_unique<CViewportWindow>("Viewport", this));
 		Windows.emplace_back(std::make_unique<CInspectorWindow>("Inspector", this));
 
 		Windows.emplace_back(std::make_unique<CSpriteAnimatorGraphNodeWindow>("Sprite Animator", this));
@@ -137,6 +157,67 @@ namespace Havtorn
 		InitAssetRepresentations();
 		InitEditorPreferences();
 
+		RegisterComponentView<STransformComponentView, STransformComponent>();
+		RegisterComponentView<SStaticMeshComponentView, SStaticMeshComponent>();
+		RegisterComponentView<SSkeletalMeshComponentView, SSkeletalMeshComponent>();
+		RegisterComponentView<SCameraComponentView, SCameraComponent>();
+		RegisterComponentView<SCameraControllerComponentView, SCameraControllerComponent>();
+		RegisterComponentView<SMaterialComponentView, SMaterialComponent>();
+		RegisterComponentView<SEnvironmentLightComponentView, SEnvironmentLightComponent>();
+		RegisterComponentView<SDirectionalLightComponentView, SDirectionalLightComponent>();
+		RegisterComponentView<SPointLightComponentView, SPointLightComponent>();
+		RegisterComponentView<SSpotLightComponentView, SSpotLightComponent>();
+		RegisterComponentView<SVolumetricLightComponentView, SVolumetricLightComponent>();
+		RegisterComponentView<SDecalComponentView, SDecalComponent>();
+		RegisterComponentView<SSpriteComponentView, SSpriteComponent>();
+		RegisterComponentView<STransform2DComponentView, STransform2DComponent>();
+		RegisterComponentView<SSpriteAnimatorGraphComponentView, SSpriteAnimatorGraphComponent>();
+		RegisterComponentView<SSkeletalAnimationComponentView, SSkeletalAnimationComponent>();
+		RegisterComponentView<SScriptComponentView, SScriptComponent>();
+		RegisterComponentView<SPhysics2DComponentView, SPhysics2DComponent>();
+		RegisterComponentView<SPhysics3DComponentView, SPhysics3DComponent>();
+		RegisterComponentView<SPhysics3DControllerComponentView, SPhysics3DControllerComponent>();
+		RegisterComponentView<SUICanvasComponentView, SUICanvasComponent>();
+		RegisterComponentView<SLevelStreamingComponentView, SLevelStreamingComponent>();
+		RegisterComponentView<SPrefabComponentView, SPrefabComponent>();
+		RegisterComponentView<SAbilityComponentView, SAbilityComponent>();
+		RegisterComponentView<SHexCommandComponentView, SHexCommandComponent>();
+		RegisterComponentView<SInputComponentView, SInputComponent>();
+		RegisterComponentView<SAudioListenerComponentView, SAudioListenerComponent>();
+		RegisterComponentView<SAudioEmitterComponentView, SAudioEmitterComponent>();
+
+		SetupComponentDependencies<SStaticMeshComponent, STransformComponent, SMaterialComponent>();
+		SetupComponentDependencies<SSkeletalMeshComponent, STransformComponent, SMaterialComponent>();
+		SetupComponentDependencies<SSkeletalAnimationComponent, STransformComponent, SMaterialComponent, SSkeletalMeshComponent>();
+		
+		RegisterNodeView<SBranchNodeView, HexRune::SBranchNode>();
+		RegisterNodeView<SSequenceNodeView, HexRune::SSequenceNode>();
+		RegisterNodeView<SEntityLoopNodeView, HexRune::SEntityLoopNode>();
+		RegisterNodeView<SComponentLoopNodeView, HexRune::SComponentLoopNode>();
+		RegisterNodeView<SDelayNodeView, HexRune::SDelayNode>();
+		RegisterNodeView<SBeginPlayNodeView, HexRune::SBeginPlayNode>();
+		RegisterNodeView<STickNodeView, HexRune::STickNode>();
+		RegisterNodeView<SEndPlayNodeView, HexRune::SEndPlayNode>();
+		RegisterNodeView<SPrintStringNodeView, HexRune::SPrintStringNode>();
+		RegisterNodeView<SAppendStringNodeView, HexRune::SAppendStringNode>();
+		RegisterNodeView<SFloatLessThanNodeView, HexRune::SFloatLessThanNode>();
+		RegisterNodeView<SFloatMoreThanNodeView, HexRune::SFloatMoreThanNode>();
+		RegisterNodeView<SFloatLessOrEqualNodeView, HexRune::SFloatLessOrEqualNode>();
+		RegisterNodeView<SFloatMoreOrEqualNodeView, HexRune::SFloatMoreOrEqualNode>();
+		RegisterNodeView<SFloatEqualNodeView, HexRune::SFloatEqualNode>();
+		RegisterNodeView<SFloatNotEqualNodeView, HexRune::SFloatNotEqualNode>();
+		RegisterNodeView<SIntLessThanNodeView, HexRune::SIntLessThanNode>();
+		RegisterNodeView<SIntMoreThanNodeView, HexRune::SIntMoreThanNode>();
+		RegisterNodeView<SIntLessOrEqualNodeView, HexRune::SIntLessOrEqualNode>();
+		RegisterNodeView<SIntMoreOrEqualNodeView, HexRune::SIntMoreOrEqualNode>();
+		RegisterNodeView<SIntEqualNodeView, HexRune::SIntEqualNode>();
+		RegisterNodeView<SIntNotEqualNodeView, HexRune::SIntNotEqualNode>();
+		RegisterNodeView<SPrintEntityNameNodeView, HexRune::SPrintEntityNameNode>();
+		RegisterNodeView<SSetStaticMeshNodeView, HexRune::SSetStaticMeshNode>();
+		RegisterNodeView<STogglePointLightNodeView, HexRune::STogglePointLightNode>();
+		RegisterNodeView<SOnBeginOverlapNodeView, HexRune::SOnBeginOverlapNode>();
+		RegisterNodeView<SOnEndOverlapNodeView, HexRune::SOnEndOverlapNode>();
+		
 		return success;
 	}
 
@@ -472,6 +553,41 @@ namespace Havtorn
 		return containingScene;
 	}
 
+	const std::map<U64, Ptr<SComponentView>>& CEditorManager::GetComponentViewsMap() const
+	{
+		return RegisteredComponentViewsMap;
+	}
+
+	const std::vector<Ptr<SComponentView>>& CEditorManager::GetComponentViewsVector() const
+	{
+		return RegisteredComponentViewsVector;
+	}
+
+	const std::vector<U64> CEditorManager::GetComponentDependencies(const U64 componentRuntimeHash) const
+	{
+		if (!ComponentDependencies.contains(componentRuntimeHash))
+			return {};
+
+		return ComponentDependencies.at(componentRuntimeHash);
+	}
+
+	const std::unordered_map<U64, Ptr<SNodeView>>& CEditorManager::GetNodeViewsMap() const
+	{
+		return RegisteredNodeViewsMap;
+	}
+
+	const std::vector<Ptr<SNodeView>>& CEditorManager::GetNodeViewsVector() const
+	{
+		return RegisteredNodeViewsVector;
+	}
+
+	void CEditorManager::ClearSelections()
+	{
+		ClearSelectedEntities();
+		ClearSelectedAssets();
+		SelectedFolder.reset();
+	}
+
 	void CEditorManager::SetSelectedEntity(const SEntity& entity)
 	{
 		ClearSelectedEntities();
@@ -703,13 +819,115 @@ namespace Havtorn
 		return repRenderTexture;
 	}
 
-	DirEntryFunc CEditorManager::GetAssetInspectFunction() const
+	SAssetPickResult CEditorManager::AssetPickerDropdown(const char* label, const EAssetType assetType, SEditorAssetRepresentation* existingAssetRep, const SVector2<F32>& pickerSize)
 	{
-		return [this](std::filesystem::directory_entry entry)
+		SAssetPickResult result;
+
+		GUI::Image(GetTextureResourceFromAssetRep(existingAssetRep), pickerSize, SVector2<F32>(0.0f), SVector2<F32>(1.0f), SColor::White, SColor::Black);
+		result.IsHovered = GUI::IsMouseInRect(GUI::GetLastRect());
+
+		if (existingAssetRep != nullptr)
+			CEditorManager::AssetDragData.TrySet(*existingAssetRep, existingAssetRep->Name.c_str(), { EDragDropFlag::SourceAllowNullID });
+
+		if (GUI::IsItemClicked(EGUIMouseButton::Right))
+		{
+			result.State = EAssetPickerState::ContextMenu;
+			return result;
+		}
+
+		constexpr F32 thumbnailPadding = 8.0f;
+		const F32 cellWidth = pickerSize.X * 0.85f + thumbnailPadding;
+		GUI::OffsetCursorPos(SVector2<F32>(1.0f, -4.0f));
+		GUI::AddRectFilled(GUI::GetCursorScreenPos(), SVector2<F32>(cellWidth, 2.0f), GetAssetTypeColor(assetType));
+		GUI::OffsetCursorPos(SVector2<F32>(0.0f, 6.0f));
+
+		// TODO.NW: Figure out the sizing of these elements. The child holding the combo and text under it makes it so that the combo arrow doesn't get displayed when minimized.
+		SVector2<F32> contentRegionAvail = GUI::GetContentRegionAvail() - SVector2<F32>(cellWidth, 0.0f);
+		GUI::SameLine();
+		constexpr F32 maxWidth = 0.0f;
+		constexpr F32 maxDropDownSize = 200.0f; // Max vertical size of the combo popup box.
+		{ // Details next to image
+			//ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(-FLT_MIN, maxDropDownSize));
+			GUI::BeginChild("Details", SVector2<F32>(maxWidth, 0.0f), { EChildFlag::AutoResizeY, EChildFlag::AlwaysAutoResize });
+
+			if (existingAssetRep != nullptr)
+				CEditorManager::AssetDragData.TrySet(*existingAssetRep, existingAssetRep->Name.c_str(), {});
+
+			// NW: Need this to keep the search bar floating and without scrolling between filter and options child
+			GUI::SetNextWindowSizeConstraints(SVector2<F32>(0.0f, 0.0f), SVector2<F32>(UMath::MaxFloat, UMath::MaxFloat));
+			if (GUI::BeginCombo("##", label))
 			{
-				const Ptr<SEditorAssetRepresentation>& assetRep = GetAssetRepFromDirEntry(entry);	
-				return SAssetInspectionData(assetRep->Name, GetTextureResourceFromAssetRep(assetRep.get()), assetRep->DirectoryEntry.path().string());
-			};
+				result.State = EAssetPickerState::Active;
+
+				AssetFilter.Draw("Search", 0); // TODO.NW: Figure out a nicer way of setting the width
+
+				GUI::SetNextWindowSizeConstraints(SVector2<F32>(0.0f, 0.0f), SVector2<F32>(UMath::MaxFloat, maxDropDownSize));
+				GUI::BeginChild("##ComboOptionsChild", SVector2<F32>(maxWidth, 0.0f), { EChildFlag::AutoResizeY, EChildFlag::AlwaysAutoResize });
+
+				I32 id = 0;
+				for (auto& entry : std::filesystem::recursive_directory_iterator("Assets"))
+				{
+					if (entry.is_directory())
+						continue;
+
+					SAssetInspectionData data = GetAssetFilteredInspectFunction()(entry, assetType);
+					if (!data.IsValid())
+						continue;
+
+					if (!AssetFilter.PassFilter(data.Name.c_str()))
+						continue;
+
+					GUI::PushID(id++);
+
+					if (GUI::ImageButton("", data.TextureRef, { GUI::TexturePreviewSizeX * 0.5f, GUI::TexturePreviewSizeY * 0.5f }))
+					{
+						// TODO.NW: Make combo close when selecting the same asset again
+						GUI::PopID();
+						result.State = EAssetPickerState::AssetPicked;
+						result.PickedEntry = entry;
+						AssetFilter.Clear();
+						break;
+					}
+
+					GUI::SameLine();
+					GUI::Text(data.Name.c_str());
+					GUI::PopID();
+				}
+
+				GUI::EndChild();
+				GUI::EndCombo();
+			}
+
+			GUI::OffsetCursorPos(SVector2<F32>(2.0f, -2.5f));
+			GUI::SetSecondaryFontActive(true);
+			GUI::TextDisabled(GetAssetTypeDetailName(assetType).c_str());
+			GUI::SetSecondaryFontActive(false);
+
+			GUI::OffsetCursorPos(SVector2<F32>(0.0f, -2.5f));
+			GUI::PushID("GetSelectedButton");
+			if (GUI::ImageButton("##", GetResourceManager()->GetStaticEditorTextureResource(EEditorTexture::GetFromSource), SVector2<F32>(12.0f, 14.0f)))
+			{
+				result.State = EAssetPickerState::GetFromSelected;
+			}
+			if (GUI::IsItemHovered())
+				GUI::SetTooltip("Use Selected Asset from Asset Browser");
+			GUI::PopID();
+
+			GUI::SameLine();
+			GUI::OffsetCursorPos(SVector2<F32>(-2.0f, 0.0f));
+			GUI::PushID("BrowseToAssetButton");
+			if (GUI::ImageButton("##", GetResourceManager()->GetStaticEditorTextureResource(EEditorTexture::FindIcon), SVector2<F32>(12.0f, 14.0f)))
+			{
+				result.State = EAssetPickerState::FindInBrowser;
+			}
+			if (GUI::IsItemHovered())
+				GUI::SetTooltip("Browse to Asset in Asset Browser");
+			GUI::PopID();
+
+			GUI::EndChild();
+		}
+
+		return result;
 	}
 
 	DirEntryEAssetTypeFunc CEditorManager::GetAssetFilteredInspectFunction() const
@@ -1424,9 +1642,9 @@ namespace Havtorn
 		if (!payload.IsPressed)
 			return;
 
-		if (payload.Key == EInputKey::KeyZ)
+		if (payload.Key == EInputButton::KeyZ)
 			EditHistory.Undo();
-		else if (payload.Key == EInputKey::KeyY)
+		else if (payload.Key == EInputButton::KeyY)
 			EditHistory.Redo();
 	}
 
@@ -1440,6 +1658,14 @@ namespace Havtorn
 			world->StopPlay();
 	}
 
+	void CEditorManager::OnToggleCursor(const SInputActionPayload payload)
+	{
+		if (!payload.IsPressed)
+			return;
+
+		PlatformManager->SetCursorLock(!PlatformManager->IsCursorLocked());
+	}
+
 	void CEditorManager::OnPivotMoving(const SInputActionPayload payload)
 	{
 		if (payload.IsPressed)
@@ -1447,7 +1673,6 @@ namespace Havtorn
 
 		if (IsPivotOffsetSet)
 			IsPivotMovingActive = payload.IsHeld;
-
 	}
 
 	void CEditorManager::OnVertexSnapping(const SInputActionPayload payload)
@@ -1462,6 +1687,11 @@ namespace Havtorn
 		IsGridSnappingActive = payload.IsHeld;
 	}
 
+	void CEditorManager::OnClearSelection(const SInputActionPayload /*payload*/)
+	{
+		ClearSelections();
+	}
+
 	void CEditorManager::OnResolutionChanged(SVector2<U16> newResolution)
 	{
 		HV_LOG_INFO("EditorMananger -> New Res X: %i, New Res Y: %i", newResolution.X, newResolution.Y);
@@ -1470,7 +1700,7 @@ namespace Havtorn
 
 	void CEditorManager::OnBeginPlay(std::vector<Ptr<CScene>>& /*scenes*/)
 	{
-		SetSelectedEntity(SEntity::Null);
+		ClearSelections();
 		SetEditorTheme(EditorPreferences.PlayColorTheme, EEditorStyleTheme::Havtorn, DarknessOffsetPlayTheme);
 		World->BlockSystem<CPickingSystem>(this);
 

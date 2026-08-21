@@ -187,9 +187,14 @@ namespace Havtorn
 		GUI::End();
 	}
 
-	void CPrefabTool::OnDisable()
+	void CPrefabTool::OnDeferredExit()
 	{
 		ClosePrefab();
+	}
+
+	void CPrefabTool::OnDisable()
+	{
+		RunDeferredExit = true;
 
 		GEngine::GetWorld()->UnblockSystem<CCameraSystem>(this);
 
@@ -230,13 +235,13 @@ namespace Havtorn
 
 		CAssetRegistry* assetRegistry = GEngine::GetAssetRegistry();
 		assetRegistry->UnrequestAsset(CurrentPrefabAssetRef, PrefabToolRenderID);
+		PrefabData = nullptr;
+		
 		assetRegistry->UnrequestAsset(PreviewSkylightAssetRef, PrefabToolRenderID);
+		PreviewSkylight = nullptr;
 
 		CurrentPrefabAssetRef = SAssetReference();
-		PrefabData = nullptr;
 		Manager->GetRenderManager()->UnrequestRenderView(PrefabToolRenderID);
-
-		SetEnabled(false);
 	}
 
 	void CPrefabTool::HandleAxisInput(const SInputAxisPayload payload)
@@ -314,12 +319,11 @@ namespace Havtorn
 		GUI::TextDisabled("Light Preview Settings");
 		auto skyboxAssetRep = Manager->GetAssetRepFromName(UGeneralUtils::ExtractFileBaseNameFromPath(PreviewSkylightAssetRef.FilePath)).get();
 
-		intptr_t assetPickerThumbnail = Manager->GetTextureResourceFromAssetRep(skyboxAssetRep);
 		std::string pickerLabel = "Preview Skybox | ";
 		if (skyboxAssetRep != nullptr)
 			pickerLabel.append(skyboxAssetRep->Name);
 
-		SAssetPickResult result = GUI::AssetPickerFilter(pickerLabel.c_str(), "Preview Skybox", assetPickerThumbnail, "Assets/Textures/Cubemaps", 4, Manager->GetAssetFilteredInspectFunction(), EAssetType::TextureCube);
+		SAssetPickResult result = Manager->AssetPickerDropdown(pickerLabel.c_str(), EAssetType::TextureCube, skyboxAssetRep);
 
 		if (result.State == EAssetPickerState::AssetPicked)
 		{
@@ -451,7 +455,7 @@ namespace Havtorn
 		//Add widgets from editor render system
 
 		const CRenderSystem* renderSystem = GEngine::GetWorld()->GetSystem<CRenderSystem>();
-		renderSystem->PushCommandsForScene(scene, PrefabToolRenderID, SEntity::Null, true);
+		renderSystem->PushCommandsForScene(scene, PrefabToolRenderID, SEntity::Null, true, false);
 		
 		// NW: Custom directional light command
 		{
